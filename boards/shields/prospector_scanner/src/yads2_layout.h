@@ -10,15 +10,16 @@
  *
  * Widget arrangement (adapted to the 280x240 scanner panel and to scan-mode
  * data coming from the keyboard's BLE advertisement):
- * - Output status (top right): "> USB" / "> BLE n" lines where the arrow marks
- *   the transport the keyboard is currently using
- *   (USB white when HID is ready, BLE green = connected, blue = bonded,
- *   white = profile open)
- * - WPM (top left): value with a small caption
+ * - Left/right peripheral (hand) connection status in the top corners
+ *   (left corner = left half, right corner = right half; green tick =
+ *   connected, red cross = not connected)
  * - Keyboard name (top centre)
+ * - Output status (USB / BLE) right aligned below the right-hand status
  * - Active layer (centre, large)
  * - Modifier icons (NerdFont row below the layer name)
- * - Battery bars (bottom edge, one bar per detected keyboard/half)
+ * - Battery level per half along the bottom edge
+ *
+ * WPM is intentionally not shown on this layout.
  *
  * Unlike the Classic (YADS) screen this layout is self-contained: it does not
  * touch the loose widget set in custom_status_screen.c but follows the

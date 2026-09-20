@@ -265,8 +265,9 @@ config PROSPECTOR_DEFAULT_LAYOUT
       1 = Field (animated line segments driven by WPM)
       2 = Operator (minimalist with dot indicators)
       3 = Radii (circular wheel indicator)
-      4 = YADS2 (YADS-style screen: output arrow, WPM, centred layer,
-          NerdFont modifiers and battery bars along the bottom)
+      4 = YADS2 (YADS-style screen: left/right half connection status in the
+          top corners, keyboard name, output status, centred layer, NerdFont
+          modifiers and battery level per half along the bottom)
 
 config PROSPECTOR_MULTI_KEYBOARD
     bool "Support multiple keyboards"

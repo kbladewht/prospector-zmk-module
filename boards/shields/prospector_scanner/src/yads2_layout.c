@@ -4,11 +4,18 @@
  *
  * YADS2 Layout for Scanner Mode
  *
- * Second YADS-style screen. The widget arrangement follows the original YADS
- * status screen from janpfischer/zmk-dongle-screen (MIT License):
+ * Second YADS-style screen, arranged for the scanner:
+ * - Left/right peripheral (hand) connection status in the top corners
+ *   (left corner = left half, right corner = right half)
+ * - Keyboard name at the top centre
+ * - Output status (USB / BLE) right aligned below the right-hand status
+ * - Active layer in the middle, NerdFont modifier icons underneath
+ * - Battery level per half along the bottom edge
+ *
+ * The widget arrangement is derived from the original YADS status screen,
+ * janpfischer/zmk-dongle-screen (MIT License):
  * https://github.com/janpfischer/zmk-dongle-screen/tree/main/boards/shields/dongle_screen
- * (output arrow top-right, WPM top-left, layer in the middle, NerdFont
- * modifier icons underneath, battery indicators along the bottom edge).
+ * WPM is intentionally not shown on this layout.
  *
  * The data itself comes from the scanner's BLE advertisement receiver
  * (structure prospector_keyboard_data), not from local ZMK state.
@@ -27,11 +34,12 @@
 
 LOG_MODULE_REGISTER(yads2_layout, CONFIG_ZMK_LOG_LEVEL);
 
-/* LVGL built-in fonts used for arbitrary text (keyboard name, output status).
+/* LVGL built-in font used for arbitrary text (keyboard name, peripheral
+ * status, output status) and for the LV_SYMBOL_* glyphs.
  * The Carrefinho fonts are glyph subsets - e.g. FG_Medium_20 stops at U+0060
  * and therefore has no lowercase letters, which LVGL would draw as placeholder
  * boxes (CONFIG_LV_USE_FONT_PLACEHOLDER=y). Only use subset fonts for fixed
- * uppercase/digit strings: FG_Medium_20 = "WPM", FG_Medium_21 = "L 85%". */
+ * uppercase/digit strings (FG_Medium_21 = "L 85%"). */
 LV_FONT_DECLARE(lv_font_montserrat_16);
 
 /* ========== Colors ==========
@@ -60,16 +68,17 @@ LV_FONT_DECLARE(lv_font_montserrat_16);
 #define YADS2_LOW_BATTERY_THRESHOLD 10
 
 /* ========== Geometry (280x240 coordinate space) ========== */
-/* Top row: WPM (left), keyboard name (centre), output status (right) */
-#define YADS2_WPM_VALUE_X 14
-#define YADS2_WPM_VALUE_Y 4
-#define YADS2_WPM_CAPTION_X 16
-#define YADS2_WPM_CAPTION_Y 42
+/* Top row: left peripheral status (left corner), keyboard name (centre),
+ * right peripheral status (right corner) */
 #define YADS2_NAME_Y 8
 #define YADS2_NAME_WIDTH 120
+#define YADS2_PEER_LEFT_X 10
+#define YADS2_PEER_RIGHT_X_OFFSET (-10)
+#define YADS2_PEER_STATUS_Y 6
+/* Output status (USB / BLE) - right aligned below the right-hand status */
 #define YADS2_OUTPUT_X_OFFSET (-10)
-#define YADS2_OUTPUT_USB_Y 6
-#define YADS2_OUTPUT_BLE_Y 30
+#define YADS2_OUTPUT_USB_Y 34
+#define YADS2_OUTPUT_BLE_Y 54
 
 /* Centre: layer name + modifier icons */
 #define YADS2_LAYER_Y (-14)
@@ -111,9 +120,9 @@ static const char *mod_symbols[4] = {
 /* ========== Static text buffers ==========
  * lv_label_set_text_static() keeps LVGL from re-allocating label text on every
  * advertisement, which fragments the LVGL pool over hours of operation. */
-static char stbuf_wpm[8] = "0";
 static char stbuf_layer[16] = "-";
 static char stbuf_name[24] = "Receiver...";
+static char stbuf_peer[2][8] = {{""}, {""}};
 static char stbuf_usb[24] = "";
 static char stbuf_ble[24] = "";
 static char stbuf_mod[64] = "";
@@ -126,8 +135,8 @@ struct yads2_battery_slot {
 };
 
 static lv_obj_t *layout_container = NULL;
-static lv_obj_t *wpm_value_label = NULL;
-static lv_obj_t *wpm_caption_label = NULL;
+static lv_obj_t *peer_left_label = NULL;
+static lv_obj_t *peer_right_label = NULL;
 static lv_obj_t *name_label = NULL;
 static lv_obj_t *usb_label = NULL;
 static lv_obj_t *ble_label = NULL;
@@ -148,7 +157,7 @@ static int battery_slot_count = 0;
 /* Cached values - updates only touch LVGL when something actually changed */
 static bool cached_valid = false;
 static uint8_t cached_layer = 0;
-static uint8_t cached_wpm = 0;
+static bool cached_peer[2] = {false, false};
 static uint8_t cached_mods = 0;
 static bool cached_usb_connected = false;
 static bool cached_ble_connected = false;
@@ -341,14 +350,31 @@ static void yads2_update_output(bool usb_connected, bool ble_connected, bool ble
     lv_label_set_text_static(ble_label, stbuf_ble);
 }
 
-/* ========== WPM / keyboard name / layer / modifiers ========== */
+/* ========== Peripheral (hand) status / keyboard name / layer / modifiers ========== */
 
-static void yads2_update_wpm(uint8_t wpm) {
-    if (!wpm_value_label) {
-        return;
+/* Left/right peripheral (hand) connection status shown in the top corners.
+ * The keyboard publishes the left half as battery_level and the right half as
+ * peripheral_battery[0]; ZMK reports level < 1 once a half disconnects, so a
+ * valid level counts as "connected" (same rule as the upstream YADS battery
+ * widget). */
+static void yads2_update_peer_status(bool left_ok, bool right_ok) {
+    lv_obj_t *labels[2] = {peer_left_label, peer_right_label};
+    const bool ok[2] = {left_ok, right_ok};
+    const char *prefix[2] = {"L ", "R "};
+
+    for (int i = 0; i < 2; i++) {
+        if (!labels[i]) {
+            continue;
+        }
+
+        snprintf(stbuf_peer[i], sizeof(stbuf_peer[i]), "%s%s", prefix[i],
+                 ok[i] ? LV_SYMBOL_OK : LV_SYMBOL_CLOSE);
+        lv_label_set_text_static(labels[i], stbuf_peer[i]);
+        lv_obj_set_style_text_color(labels[i],
+                                    lv_color_hex(ok[i] ? YADS2_COLOR_BLE_CONNECTED
+                                                       : YADS2_COLOR_BATTERY_OFF),
+                                    LV_PART_MAIN);
     }
-    snprintf(stbuf_wpm, sizeof(stbuf_wpm), "%u", wpm);
-    lv_label_set_text_static(wpm_value_label, stbuf_wpm);
 }
 
 static void yads2_update_name(const char *keyboard_name) {
@@ -414,18 +440,22 @@ static void yads2_update_modifiers(uint8_t modifier_flags) {
 /* ========== Create ========== */
 
 static void yads2_create_top_row(lv_obj_t *parent) {
-    /* WPM value (top left) */
-    wpm_value_label = lv_label_create(parent);
-    lv_obj_set_style_text_font(wpm_value_label, &FR_Medium_32, LV_PART_MAIN);
-    lv_obj_set_style_text_color(wpm_value_label, lv_color_hex(YADS2_COLOR_TEXT), LV_PART_MAIN);
-    lv_obj_set_pos(wpm_value_label, YADS2_WPM_VALUE_X, YADS2_WPM_VALUE_Y);
-    lv_label_set_text_static(wpm_value_label, stbuf_wpm);
+    /* Left/right peripheral status (top corners). The position alone identifies
+     * the half: left corner = left hand, right corner = right hand. */
+    peer_left_label = lv_label_create(parent);
+    lv_obj_set_style_text_font(peer_left_label, &lv_font_montserrat_16, LV_PART_MAIN);
+    lv_obj_set_style_text_color(peer_left_label, lv_color_hex(YADS2_COLOR_BATTERY_OFF),
+                                LV_PART_MAIN);
+    lv_obj_set_pos(peer_left_label, YADS2_PEER_LEFT_X, YADS2_PEER_STATUS_Y);
+    lv_label_set_text_static(peer_left_label, "L " LV_SYMBOL_CLOSE);
 
-    wpm_caption_label = lv_label_create(parent);
-    lv_obj_set_style_text_font(wpm_caption_label, &FG_Medium_20, LV_PART_MAIN);
-    lv_obj_set_style_text_color(wpm_caption_label, lv_color_hex(YADS2_COLOR_DIM), LV_PART_MAIN);
-    lv_obj_set_pos(wpm_caption_label, YADS2_WPM_CAPTION_X, YADS2_WPM_CAPTION_Y);
-    lv_label_set_text_static(wpm_caption_label, "WPM");
+    peer_right_label = lv_label_create(parent);
+    lv_obj_set_style_text_font(peer_right_label, &lv_font_montserrat_16, LV_PART_MAIN);
+    lv_obj_set_style_text_color(peer_right_label, lv_color_hex(YADS2_COLOR_BATTERY_OFF),
+                                LV_PART_MAIN);
+    lv_obj_align(peer_right_label, LV_ALIGN_TOP_RIGHT, YADS2_PEER_RIGHT_X_OFFSET,
+                 YADS2_PEER_STATUS_Y);
+    lv_label_set_text_static(peer_right_label, "R " LV_SYMBOL_CLOSE);
 
     /* Keyboard name (top centre) - built-in font: the name is arbitrary text
      * and the subset fonts do not cover all letters */
@@ -438,7 +468,8 @@ static void yads2_create_top_row(lv_obj_t *parent) {
     lv_obj_align(name_label, LV_ALIGN_TOP_MID, 0, YADS2_NAME_Y);
     lv_label_set_text_static(name_label, stbuf_name);
 
-    /* Output status (top right) - "> USB" / "> BLE n", recolored per transport */
+    /* Output status (below the right-hand status) - "> USB" / "> BLE n",
+     * recolored per transport */
     usb_label = lv_label_create(parent);
     lv_obj_set_style_text_font(usb_label, &lv_font_montserrat_16, LV_PART_MAIN);
     lv_obj_set_style_text_align(usb_label, LV_TEXT_ALIGN_RIGHT, LV_PART_MAIN);
@@ -551,6 +582,8 @@ void yads2_layout_update(uint8_t active_layer, const char *layer_name,
         return;
     }
 
+    ARG_UNUSED(wpm); /* WPM is intentionally not shown in this layout */
+
     const char *name = (keyboard_name != NULL) ? keyboard_name : "";
     bool have_keyboard = (name[0] != '\0');
     const char *layer = (layer_name != NULL) ? layer_name : "";
@@ -594,12 +627,6 @@ void yads2_layout_update(uint8_t active_layer, const char *layer_name,
         snprintf(cached_layer_name, sizeof(cached_layer_name), "%s", layer);
     }
 
-    /* WPM */
-    if (!cached_valid || wpm != cached_wpm) {
-        yads2_update_wpm(wpm);
-        cached_wpm = wpm;
-    }
-
     /* Modifiers */
     if (!cached_valid || modifier_flags != cached_mods) {
         yads2_update_modifiers(modifier_flags);
@@ -638,6 +665,24 @@ void yads2_layout_update(uint8_t active_layer, const char *layer_name,
         cached_battery_connected = battery_connected;
     }
 
+    /* Peripheral (hand) connection status for the two top corners. A half counts
+     * as connected when it reports a level; while nothing has been received yet
+     * (and the battery placeholder is active) the preview state is shown so the
+     * layout looks complete. */
+    bool peer_ok[2];
+    peer_ok[0] = slot_connected[0] && slot_levels[0] > 0;
+    peer_ok[1] = slot_connected[1] && slot_levels[1] > 0;
+    if (!have_keyboard && (YADS2_BATTERY_PLACEHOLDER_LEVEL > 0)) {
+        peer_ok[0] = true;
+        peer_ok[1] = true;
+    }
+
+    if (!cached_valid || peer_ok[0] != cached_peer[0] || peer_ok[1] != cached_peer[1]) {
+        yads2_update_peer_status(peer_ok[0], peer_ok[1]);
+        cached_peer[0] = peer_ok[0];
+        cached_peer[1] = peer_ok[1];
+    }
+
     cached_valid = true;
 }
 
@@ -647,8 +692,8 @@ void yads2_layout_destroy(void) {
     }
 
     /* Every widget lives directly on the screen / battery row */
-    lv_obj_t *objects[] = {battery_row, wpm_value_label, wpm_caption_label, name_label,
-                           usb_label,   ble_label,       layer_label,       mod_label};
+    lv_obj_t *objects[] = {battery_row, peer_left_label, peer_right_label, name_label,
+                           usb_label,   ble_label,       layer_label,      mod_label};
     for (size_t i = 0; i < sizeof(objects) / sizeof(objects[0]); i++) {
         if (objects[i]) {
             lv_obj_del(objects[i]);
@@ -656,8 +701,8 @@ void yads2_layout_destroy(void) {
     }
 
     battery_row = NULL;
-    wpm_value_label = NULL;
-    wpm_caption_label = NULL;
+    peer_left_label = NULL;
+    peer_right_label = NULL;
     name_label = NULL;
     usb_label = NULL;
     ble_label = NULL;
@@ -666,6 +711,7 @@ void yads2_layout_destroy(void) {
     memset(battery_slots, 0, sizeof(battery_slots));
     memset(slot_levels, 0, sizeof(slot_levels));
     memset(slot_connected, 0, sizeof(slot_connected));
+    memset(cached_peer, 0, sizeof(cached_peer));
     for (int i = 0; i < YADS2_MAX_BATTERIES; i++) {
         slot_names[i][0] = '\0';
         snprintf(stbuf_battery[i], sizeof(stbuf_battery[i]), "--");

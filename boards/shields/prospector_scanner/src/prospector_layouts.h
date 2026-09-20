@@ -13,8 +13,9 @@
  * - FIELD: Clean layout with layer name, battery bars, modifiers (FR_Regular_36 style)
  * - OPERATOR: Minimalist with dot indicators for layers
  * - RADII: Circular wheel-based layer indicator with rotation animation
- * - YADS2: Upstream YADS arrangement (output arrow, WPM, centred layer,
- *          NerdFont modifier row, battery bars along the bottom)
+ * - YADS2: Scanner-arranged YADS screen (left/right half connection status in
+ *          the top corners, keyboard name, output status, centred layer,
+ *          NerdFont modifier row, battery level per half along the bottom)
  */
 
 #pragma once
