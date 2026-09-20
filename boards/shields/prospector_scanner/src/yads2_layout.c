@@ -2,7 +2,7 @@
  * Copyright (c) 2024 The ZMK Contributors
  * SPDX-License-Identifier: MIT
  *
- * YADS2 布局（Scanner 模式）
+ * YADS2 布局（Dongle 模式）
  *
  * 第二种 YADS 风格界面，按扫描器（dongle）的用途排布：
  * - 左上/右上角：左右手的连接状态（左角 = 左手，右角 = 右手）
@@ -13,10 +13,10 @@
  *
  * 排布参考上游 YADS 界面 janpfischer/zmk-dongle-screen（MIT 许可）：
  * https://github.com/janpfischer/zmk-dongle-screen/tree/main/boards/shields/dongle_screen
- * 本布局不显示 WPM，也不显示 USB/输出状态（本机是 dongle，由 USB 供电）。
+ * 
  *
- * 数据来自扫描器的 BLE 广播接收（结构体 prospector_keyboard_data），
- * 不使用本机 ZMK 状态。
+ * 
+ * 使用本机 ZMK 从机发过来的数据更新。
  *
  * 显示区：280x240（与其他布局同一坐标系）。
  */
