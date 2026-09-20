@@ -8,15 +8,17 @@
  * janpfischer/zmk-dongle-screen (MIT License):
  * https://github.com/janpfischer/zmk-dongle-screen/tree/main/boards/shields/dongle_screen
  *
- * Widget arrangement (adapted to the 280x240 scanner panel and to scan-mode
- * data coming from the keyboard's BLE advertisement):
+ * Widget arrangement (adapted to the 280x240 scanner panel):
  * - Left/right peripheral (hand) connection status in the top corners
  *   (left corner = left half, right corner = right half; green tick =
  *   connected, red cross = not connected)
  * - Keyboard name (top centre)
  * - Output status (USB / BLE) right aligned below the right-hand status
- * - Active layer (centre, large)
- * - Modifier icons (NerdFont row below the layer name)
+ * - Layer list (centre): every layer of this firmware's own keymap is listed
+ *   under its full display-name, the current layer is highlighted and the list
+ *   scrolls when there are more layers than rows. Before any update the first
+ *   layer is highlighted; yads2_layout_set_layer() switches the highlight.
+ * - Modifier icons (NerdFont row below the layer list)
  * - Battery level per half along the bottom edge
  *
  * WPM is intentionally not shown on this layout.
@@ -37,6 +39,20 @@
 
 /* YADS2 layout API */
 lv_obj_t *yads2_layout_create(lv_obj_t *parent);
+
+/**
+ * @brief Highlight one layer in the layer list
+ *
+ * The names themselves are read from this firmware's own keymap
+ * (zmk_keymap_layer_name()), so the full display-name is available - the status
+ * advertisement only carries 4 characters of a layer name and is therefore not
+ * used for the list. Call with 0 for the first layer (which is also the default
+ * before any call).
+ *
+ * @param index Layer index (clamped to the number of keymap layers)
+ */
+void yads2_layout_set_layer(uint8_t index);
+
 void yads2_layout_update(uint8_t active_layer, const char *layer_name,
                          uint8_t battery_level, bool battery_connected,
                          const uint8_t peripheral_battery[YADS2_MAX_PERIPHERALS],
