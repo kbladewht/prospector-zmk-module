@@ -13,6 +13,8 @@
  * - FIELD: Clean layout with layer name, battery bars, modifiers (FR_Regular_36 style)
  * - OPERATOR: Minimalist with dot indicators for layers
  * - RADII: Circular wheel-based layer indicator with rotation animation
+ * - YADS2: Upstream YADS arrangement (output arrow, WPM, centred layer,
+ *          NerdFont modifier row, battery bars along the bottom)
  */
 
 #pragma once
@@ -33,6 +35,7 @@ typedef enum {
     PROSPECTOR_LAYOUT_FIELD,         /* Clean modern layout */
     PROSPECTOR_LAYOUT_OPERATOR,      /* Minimalist dot indicators */
     PROSPECTOR_LAYOUT_RADII,         /* Circular wheel indicator */
+    PROSPECTOR_LAYOUT_YADS2,         /* YADS screen: output arrow, WPM, layer, mods, battery bars */
     PROSPECTOR_LAYOUT_COUNT
 } prospector_layout_t;
 

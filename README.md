@@ -86,6 +86,7 @@ CONFIG_ZMK_STATUS_ADV_CENTRAL_SIDE="LEFT"
 ### New Features
 - **NVS settings persistence**: Channel filter, brightness, layout settings survive reboot
 - **Operator / Radii / Field layouts**: 3 new display layouts
+- **YADS2 layout**: Second YADS-style screen (output arrow, WPM, keyboard name, centred layer, NerdFont modifiers, bottom battery bars) based on [janpfischer/zmk-dongle-screen](https://github.com/janpfischer/zmk-dongle-screen)
 - **CONFIG_PROSPECTOR_DEFAULT_LAYOUT**: Select startup layout via Kconfig (non-touch mode support)
 - **3-battery bar display**: Operator layout auto-switches from arc to bar when 3+ peripherals
 - **Layer name 4 chars**: Increased from 3 to 4 characters

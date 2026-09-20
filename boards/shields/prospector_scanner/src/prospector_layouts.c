@@ -4,7 +4,7 @@
  *
  * Prospector Display Layouts - Scanner Mode Manager
  *
- * Manages switching between Operator and Radii layouts.
+ * Manages switching between the Field, Operator, Radii and YADS2 layouts.
  * Use prospector_layouts_next()/prev() to switch layouts.
  */
 
@@ -12,11 +12,12 @@
 #include "operator_layout.h"
 #include "radii_layout.h"
 #include "field_layout.h"
+#include "yads2_layout.h"
 #include <zephyr/logging/log.h>
 
 LOG_MODULE_REGISTER(prospector_layouts, CONFIG_ZMK_LOG_LEVEL);
 
-/* Available layouts: Operator and Radii */
+/* Available layouts: Field, Operator, Radii and YADS2 */
 static prospector_layout_t current_layout = PROSPECTOR_LAYOUT_OPERATOR;
 static lv_obj_t *parent_obj = NULL;
 static bool initialized = false;
@@ -59,10 +60,11 @@ void prospector_layouts_destroy(void) {
 void prospector_layouts_set_style(prospector_layout_t layout) {
     if (!initialized) return;
 
-    /* Support Field, Operator, and Radii */
+    /* Support Field, Operator, Radii and YADS2 */
     if (layout != PROSPECTOR_LAYOUT_FIELD &&
         layout != PROSPECTOR_LAYOUT_OPERATOR &&
-        layout != PROSPECTOR_LAYOUT_RADII) {
+        layout != PROSPECTOR_LAYOUT_RADII &&
+        layout != PROSPECTOR_LAYOUT_YADS2) {
         layout = PROSPECTOR_LAYOUT_OPERATOR;
     }
 
@@ -86,7 +88,7 @@ prospector_layout_t prospector_layouts_get_style(void) {
 void prospector_layouts_next(void) {
     if (!initialized) return;
 
-    /* Cycle: Field -> Operator -> Radii -> Field */
+    /* Cycle: Field -> Operator -> Radii -> YADS2 -> Field */
     prospector_layout_t next;
     switch (current_layout) {
     case PROSPECTOR_LAYOUT_FIELD:
@@ -96,6 +98,9 @@ void prospector_layouts_next(void) {
         next = PROSPECTOR_LAYOUT_RADII;
         break;
     case PROSPECTOR_LAYOUT_RADII:
+        next = PROSPECTOR_LAYOUT_YADS2;
+        break;
+    case PROSPECTOR_LAYOUT_YADS2:
     default:
         next = PROSPECTOR_LAYOUT_FIELD;
         break;
@@ -106,18 +111,21 @@ void prospector_layouts_next(void) {
 void prospector_layouts_prev(void) {
     if (!initialized) return;
 
-    /* Cycle reverse: Field <- Operator <- Radii <- Field */
+    /* Cycle reverse: Field <- Operator <- Radii <- YADS2 <- Field */
     prospector_layout_t prev;
     switch (current_layout) {
     case PROSPECTOR_LAYOUT_FIELD:
-        prev = PROSPECTOR_LAYOUT_RADII;
+        prev = PROSPECTOR_LAYOUT_YADS2;
         break;
     case PROSPECTOR_LAYOUT_OPERATOR:
         prev = PROSPECTOR_LAYOUT_FIELD;
         break;
     case PROSPECTOR_LAYOUT_RADII:
-    default:
         prev = PROSPECTOR_LAYOUT_OPERATOR;
+        break;
+    case PROSPECTOR_LAYOUT_YADS2:
+    default:
+        prev = PROSPECTOR_LAYOUT_RADII;
         break;
     }
     prospector_layouts_set_style(prev);
@@ -162,6 +170,8 @@ const char *prospector_layouts_get_name(prospector_layout_t layout) {
         return "Operator";
     case PROSPECTOR_LAYOUT_RADII:
         return "Radii";
+    case PROSPECTOR_LAYOUT_YADS2:
+        return "YADS2";
     default:
         return "Unknown";
     }
@@ -180,6 +190,9 @@ static void destroy_current_layout(void) {
     case PROSPECTOR_LAYOUT_RADII:
         radii_layout_destroy();
         break;
+    case PROSPECTOR_LAYOUT_YADS2:
+        yads2_layout_destroy();
+        break;
     default:
         break;
     }
@@ -197,6 +210,9 @@ static void create_current_layout(void) {
         break;
     case PROSPECTOR_LAYOUT_RADII:
         radii_layout_create(parent_obj);
+        break;
+    case PROSPECTOR_LAYOUT_YADS2:
+        yads2_layout_create(parent_obj);
         break;
     default:
         /* Fallback to Operator */
@@ -258,6 +274,17 @@ static void update_current_layout(void) {
             battery_level, battery_connected,
             peripheral_battery[0], peripheral_connected[0],
             modifier_flags, usb_connected, ble_profile
+        );
+        break;
+    case PROSPECTOR_LAYOUT_YADS2:
+        yads2_layout_update(
+            active_layer, layer_name,
+            battery_level, battery_connected,
+            peripheral_battery, peripheral_connected,
+            wpm, modifier_flags,
+            usb_connected, ble_profile,
+            ble_connected, ble_bonded,
+            cached_data.keyboard_name
         );
         break;
     default:
