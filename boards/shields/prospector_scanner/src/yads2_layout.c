@@ -120,7 +120,7 @@ static const char *mod_symbols[4] = {
 /* ========== Static text buffers ==========
  * lv_label_set_text_static() keeps LVGL from re-allocating label text on every
  * advertisement, which fragments the LVGL pool over hours of operation. */
-static char stbuf_layer[16] = "-";
+static char stbuf_layer[20] = "-";
 static char stbuf_name[24] = "Receiver...";
 static char stbuf_peer[2][8] = {{""}, {""}};
 static char stbuf_usb[24] = "";
@@ -392,20 +392,19 @@ static void yads2_update_name(const char *keyboard_name) {
     lv_label_set_text_static(name_label, stbuf_name);
 }
 
+/* Layer label, following the upstream YADS layer widget: the received name is
+ * shown as-is, and the layer index is used when no name is available.
+ *
+ * NOTE: the status advertisement carries only 4 characters of the layer name
+ * (struct zmk_status_adv_data.layer_name[4], not NUL terminated), so longer
+ * keymap display-names arrive truncated ("Keymap" -> "Keym"). */
 static void yads2_update_layer(uint8_t active_layer, const char *layer_name) {
     if (!layer_label) {
         return;
     }
 
     if (layer_name && layer_name[0]) {
-        char upper[16];
-        int i = 0;
-        for (; layer_name[i] && i < (int)sizeof(upper) - 1; i++) {
-            char c = layer_name[i];
-            upper[i] = (c >= 'a' && c <= 'z') ? (char)(c - 32) : c;
-        }
-        upper[i] = '\0';
-        snprintf(stbuf_layer, sizeof(stbuf_layer), "%s", upper);
+        snprintf(stbuf_layer, sizeof(stbuf_layer), "%s", layer_name);
     } else {
         snprintf(stbuf_layer, sizeof(stbuf_layer), "%u", active_layer);
     }
