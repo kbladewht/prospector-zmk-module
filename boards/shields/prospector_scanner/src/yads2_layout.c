@@ -27,24 +27,37 @@
 
 LOG_MODULE_REGISTER(yads2_layout, CONFIG_ZMK_LOG_LEVEL);
 
-/* LVGL built-in font used for the compact output status lines */
+/* LVGL built-in fonts used for arbitrary text (keyboard name, output status).
+ * The Carrefinho fonts are glyph subsets - e.g. FG_Medium_20 stops at U+0060
+ * and therefore has no lowercase letters, which LVGL would draw as placeholder
+ * boxes (CONFIG_LV_USE_FONT_PLACEHOLDER=y). Only use subset fonts for fixed
+ * uppercase/digit strings: FG_Medium_20 = "WPM", FG_Medium_21 = "L 85%". */
 LV_FONT_DECLARE(lv_font_montserrat_16);
 
-/* ========== Colors ========== */
+/* ========== Colors ==========
+ * Palette follows the upstream YADS status screen
+ * (janpfischer/zmk-dongle-screen): white text by default, colour only on the
+ * output status and the battery widgets. */
 #define YADS2_COLOR_TEXT          0xFFFFFF
 #define YADS2_COLOR_DIM           0x7B7D93
-#define YADS2_COLOR_USB_READY     0xFFFFFF
-#define YADS2_COLOR_BLE_CONNECTED 0x00FF00
-#define YADS2_COLOR_BLE_BONDED    0x4A90E2
-#define YADS2_COLOR_BLE_OPEN      0xFFFFFF
-#define YADS2_COLOR_BATTERY_OK    0xFFFFFF
-#define YADS2_COLOR_BATTERY_LOW   0xFFC000
-#define YADS2_COLOR_BATTERY_OFF   0xE63030
+#define YADS2_COLOR_USB_READY     0xFFFFFF /* upstream: white when USB HID ready */
+#define YADS2_COLOR_USB_IDLE      0x7B7D93 /* upstream: 0xFF0000 (red when not ready).
+                                            * Dimmed here because on the scanner
+                                            * "not ready" is the normal state
+                                            * while the keyboard talks BLE. */
+#define YADS2_COLOR_BLE_CONNECTED 0x00FF00 /* upstream: 0x00FF00 */
+#define YADS2_COLOR_BLE_BONDED    0x4A90E2 /* upstream: 0x0000FF (softer blue kept
+                                            * for legibility on this panel) */
+#define YADS2_COLOR_BLE_OPEN      0xFFFFFF /* upstream: white (profile free) */
+#define YADS2_COLOR_BATTERY_OK    0xFFFFFF /* upstream: white */
+#define YADS2_COLOR_BATTERY_LOW   0xFFC000 /* upstream: LV_PALETTE_YELLOW */
+#define YADS2_COLOR_BATTERY_OFF   0xE63030 /* upstream: LV_PALETTE_RED */
 #define YADS2_COLOR_BAR_TRACK     0x202020
 #define YADS2_COLOR_BAR_LOW_TRACK 0x584028
 #define YADS2_COLOR_BAR_OFF_TRACK 0x5A2020
 
-#define YADS2_LOW_BATTERY_THRESHOLD 20
+/* Level at or below which the battery turns yellow (upstream YADS: <= 10%) */
+#define YADS2_LOW_BATTERY_THRESHOLD 10
 
 /* ========== Geometry (280x240 coordinate space) ========== */
 /* Top row: WPM (left), keyboard name (centre), output status (right) */
@@ -62,16 +75,30 @@ LV_FONT_DECLARE(lv_font_montserrat_16);
 #define YADS2_LAYER_Y (-14)
 #define YADS2_MOD_Y 34
 
-/* Bottom: battery row */
-#define YADS2_BATTERY_ROW_WIDTH 260
-#define YADS2_BATTERY_ROW_HEIGHT 46
+/* Bottom: battery row (always visible - placeholder 50% until data arrives)
+ * One entry per keyboard/half: "<L|R> <level>%" line with a gauge bar below.
+ * The keyboard publishes battery_level = LEFT half and peripheral_battery[0] =
+ * RIGHT half (see status_advertisement.c), so a split keyboard shows two
+ * entries labelled L and R. */
+#define YADS2_BATTERY_ROW_WIDTH 268
+#define YADS2_BATTERY_ROW_HEIGHT 54
 #define YADS2_BATTERY_ROW_Y_OFFSET (-4)
-#define YADS2_BATTERY_BAR_Y 22
-#define YADS2_BATTERY_BAR_HEIGHT 6
-#define YADS2_BATTERY_NAME_Y 30
-#define YADS2_BATTERY_BAR_MAX_WIDTH 120
-#define YADS2_BATTERY_BAR_MIN_WIDTH 46
-#define YADS2_BATTERY_BAR_GAP 10
+#define YADS2_BATTERY_LABEL_Y 0
+#define YADS2_BATTERY_BAR_Y 28
+#define YADS2_BATTERY_BAR_HEIGHT 10
+#define YADS2_BATTERY_BAR_MAX_WIDTH 130
+#define YADS2_BATTERY_BAR_MIN_WIDTH 52
+#define YADS2_BATTERY_BAR_GAP 18
+/* Placeholder level shown for a slot that has not reported a level yet.
+ * Set to 0 to fall back to the "--" style instead. */
+#define YADS2_BATTERY_PLACEHOLDER_LEVEL 50
+
+/* Slots previewed (and filled with the placeholder) while no keyboard data is
+ * available yet - 2 = split keyboard look (L + R). */
+#define YADS2_BATTERY_DEFAULT_SLOTS 2
+
+/* Slots narrower than this drop the '%' to keep "L 85" readable */
+#define YADS2_BATTERY_LABEL_NARROW_WIDTH 80
 
 /* ========== NerdFont modifier symbols (same glyphs as the Classic screen) ========== */
 static const char *mod_symbols[4] = {
@@ -86,17 +113,16 @@ static const char *mod_symbols[4] = {
  * advertisement, which fragments the LVGL pool over hours of operation. */
 static char stbuf_wpm[8] = "0";
 static char stbuf_layer[16] = "-";
-static char stbuf_name[24] = "Scanning...";
+static char stbuf_name[24] = "Receiver...";
 static char stbuf_usb[24] = "";
 static char stbuf_ble[24] = "";
 static char stbuf_mod[64] = "";
-static char stbuf_battery[YADS2_MAX_BATTERIES][8] = {{"-"}, {"-"}, {"-"}, {"-"}};
+static char stbuf_battery[YADS2_MAX_BATTERIES][12] = {{"--"}, {"--"}, {"--"}, {"--"}};
 
 /* ========== Widget state ========== */
 struct yads2_battery_slot {
-    lv_obj_t *pct;
-    lv_obj_t *bar;
-    lv_obj_t *name;
+    lv_obj_t *label; /* "<L|R> <level>%" */
+    lv_obj_t *bar;   /* gauge filled to the level */
 };
 
 static lv_obj_t *layout_container = NULL;
@@ -109,6 +135,12 @@ static lv_obj_t *layer_label = NULL;
 static lv_obj_t *mod_label = NULL;
 static lv_obj_t *battery_row = NULL;
 static struct yads2_battery_slot battery_slots[YADS2_MAX_BATTERIES];
+
+/* Per-slot content: label ("L", "R", "Aux", "A1", "A2"), last level and state */
+static char slot_names[YADS2_MAX_BATTERIES][6] = {{""}, {""}, {""}, {""}};
+static uint8_t slot_levels[YADS2_MAX_BATTERIES] = {0, 0, 0, 0};
+static bool slot_connected[YADS2_MAX_BATTERIES] = {false, false, false, false};
+static int slot_widths[YADS2_MAX_BATTERIES] = {0, 0, 0, 0};
 
 static bool layout_created = false;
 static int battery_slot_count = 0;
@@ -128,6 +160,9 @@ static uint8_t cached_battery_level = 0;
 static bool cached_battery_connected = false;
 static uint8_t cached_peripheral_battery[YADS2_MAX_PERIPHERALS] = {0};
 static bool cached_peripheral_connected[YADS2_MAX_PERIPHERALS] = {false};
+
+/* Refresh one battery slot (label text + gauge) from the stored values */
+static void yads2_render_battery_slot(int slot);
 
 /* Battery source names, matching the Classic screen's naming by battery count */
 static const char *const *battery_names_for_count(int count) {
@@ -175,23 +210,27 @@ static void yads2_apply_battery_layout(int count) {
         struct yads2_battery_slot *slot = &battery_slots[i];
         bool visible = i < count;
         int x = start_x + i * (bar_width + YADS2_BATTERY_BAR_GAP);
-        lv_obj_t *objects[3] = {slot->pct, slot->bar, slot->name};
+        lv_obj_t *objects[2] = {slot->label, slot->bar};
 
-        if (slot->pct) {
-            lv_obj_set_width(slot->pct, bar_width);
-            lv_obj_set_pos(slot->pct, x, 0);
+        if (visible) {
+            const char *name = (names && names[i]) ? names[i] : "";
+            snprintf(slot_names[i], sizeof(slot_names[i]), "%s", name);
+            slot_widths[i] = bar_width;
+        } else {
+            slot_names[i][0] = '\0';
+            slot_widths[i] = 0;
+        }
+
+        if (slot->label) {
+            lv_obj_set_width(slot->label, bar_width);
+            lv_obj_set_pos(slot->label, x, YADS2_BATTERY_LABEL_Y);
         }
         if (slot->bar) {
             lv_obj_set_size(slot->bar, bar_width, YADS2_BATTERY_BAR_HEIGHT);
             lv_obj_set_pos(slot->bar, x, YADS2_BATTERY_BAR_Y);
         }
-        if (slot->name) {
-            lv_obj_set_width(slot->name, bar_width);
-            lv_obj_set_pos(slot->name, x, YADS2_BATTERY_NAME_Y);
-            lv_label_set_text(slot->name, (visible && names && names[i]) ? names[i] : "");
-        }
 
-        for (int o = 0; o < 3; o++) {
+        for (int o = 0; o < 2; o++) {
             if (!objects[o]) {
                 continue;
             }
@@ -201,21 +240,30 @@ static void yads2_apply_battery_layout(int count) {
                 lv_obj_add_flag(objects[o], LV_OBJ_FLAG_HIDDEN);
             }
         }
+
+        if (visible) {
+            yads2_render_battery_slot(i);
+        }
     }
 
     battery_slot_count = count;
 }
 
-static void yads2_set_battery_slot(int slot, uint8_t level, bool connected) {
+/* Compose "<name> <level>%" (or "<name> --" while unknown) and colour one slot */
+static void yads2_render_battery_slot(int slot) {
     if (slot < 0 || slot >= YADS2_MAX_BATTERIES) {
         return;
     }
 
     struct yads2_battery_slot *w = &battery_slots[slot];
-    bool low = connected && level > 0 && level <= YADS2_LOW_BATTERY_THRESHOLD;
+    bool have_level = slot_connected[slot] && slot_levels[slot] > 0;
+    /* Until a level arrives the placeholder (50% by default) is shown so that
+     * the bottom row always looks complete. */
+    uint8_t level = have_level ? slot_levels[slot] : (uint8_t)YADS2_BATTERY_PLACEHOLDER_LEVEL;
+    bool low = level > 0 && level <= YADS2_LOW_BATTERY_THRESHOLD;
 
     uint32_t text_color, fill_color, track_color;
-    if (!connected || level == 0) {
+    if (level == 0) {
         text_color = YADS2_COLOR_BATTERY_OFF;
         fill_color = YADS2_COLOR_BATTERY_OFF;
         track_color = YADS2_COLOR_BAR_OFF_TRACK;
@@ -229,21 +277,44 @@ static void yads2_set_battery_slot(int slot, uint8_t level, bool connected) {
         track_color = YADS2_COLOR_BAR_TRACK;
     }
 
-    if (w->pct) {
-        if (connected && level > 0) {
-            snprintf(stbuf_battery[slot], sizeof(stbuf_battery[slot]), "%u", level);
+    if (w->label) {
+        /* Drop the '%' in narrow slots so the line cannot be clipped */
+        bool with_pct = slot_widths[slot] >= YADS2_BATTERY_LABEL_NARROW_WIDTH;
+
+        if (level > 0) {
+            if (slot_names[slot][0]) {
+                snprintf(stbuf_battery[slot], sizeof(stbuf_battery[slot]),
+                         with_pct ? "%s %u%%" : "%s %u", slot_names[slot], level);
+            } else {
+                snprintf(stbuf_battery[slot], sizeof(stbuf_battery[slot]),
+                         with_pct ? "%u%%" : "%u", level);
+            }
+        } else if (slot_names[slot][0]) {
+            snprintf(stbuf_battery[slot], sizeof(stbuf_battery[slot]), "%s --",
+                     slot_names[slot]);
         } else {
-            snprintf(stbuf_battery[slot], sizeof(stbuf_battery[slot]), "-");
+            snprintf(stbuf_battery[slot], sizeof(stbuf_battery[slot]), "--");
         }
-        lv_label_set_text_static(w->pct, stbuf_battery[slot]);
-        lv_obj_set_style_text_color(w->pct, lv_color_hex(text_color), LV_PART_MAIN);
+        lv_label_set_text_static(w->label, stbuf_battery[slot]);
+        lv_obj_set_style_text_color(w->label, lv_color_hex(text_color), LV_PART_MAIN);
     }
 
     if (w->bar) {
-        lv_bar_set_value(w->bar, (connected && level > 0) ? level : 0, LV_ANIM_OFF);
+        lv_bar_set_value(w->bar, level, LV_ANIM_OFF);
         lv_obj_set_style_bg_color(w->bar, lv_color_hex(track_color), LV_PART_MAIN);
         lv_obj_set_style_bg_color(w->bar, lv_color_hex(fill_color), LV_PART_INDICATOR);
     }
+}
+
+/* Store the latest level of one slot and refresh it */
+static void yads2_set_battery_slot(int slot, uint8_t level, bool connected) {
+    if (slot < 0 || slot >= YADS2_MAX_BATTERIES) {
+        return;
+    }
+
+    slot_levels[slot] = level;
+    slot_connected[slot] = connected;
+    yads2_render_battery_slot(slot);
 }
 
 /* ========== Output status (top right) ========== */
@@ -254,7 +325,7 @@ static void yads2_update_output(bool usb_connected, bool ble_connected, bool ble
         return;
     }
 
-    uint32_t usb_color = usb_connected ? YADS2_COLOR_USB_READY : YADS2_COLOR_DIM;
+    uint32_t usb_color = usb_connected ? YADS2_COLOR_USB_READY : YADS2_COLOR_USB_IDLE;
     uint32_t ble_color = ble_connected ? YADS2_COLOR_BLE_CONNECTED
                          : ble_bonded  ? YADS2_COLOR_BLE_BONDED
                                        : YADS2_COLOR_BLE_OPEN;
@@ -289,7 +360,7 @@ static void yads2_update_name(const char *keyboard_name) {
         snprintf(stbuf_name, sizeof(stbuf_name), "%s", keyboard_name);
         lv_obj_set_style_text_color(name_label, lv_color_hex(YADS2_COLOR_TEXT), LV_PART_MAIN);
     } else {
-        snprintf(stbuf_name, sizeof(stbuf_name), "Scanning...");
+        snprintf(stbuf_name, sizeof(stbuf_name), "Receiver...");
         lv_obj_set_style_text_color(name_label, lv_color_hex(YADS2_COLOR_DIM), LV_PART_MAIN);
     }
     lv_label_set_text_static(name_label, stbuf_name);
@@ -356,9 +427,10 @@ static void yads2_create_top_row(lv_obj_t *parent) {
     lv_obj_set_pos(wpm_caption_label, YADS2_WPM_CAPTION_X, YADS2_WPM_CAPTION_Y);
     lv_label_set_text_static(wpm_caption_label, "WPM");
 
-    /* Keyboard name (top centre) */
+    /* Keyboard name (top centre) - built-in font: the name is arbitrary text
+     * and the subset fonts do not cover all letters */
     name_label = lv_label_create(parent);
-    lv_obj_set_style_text_font(name_label, &FG_Medium_20, LV_PART_MAIN);
+    lv_obj_set_style_text_font(name_label, &lv_font_montserrat_16, LV_PART_MAIN);
     lv_obj_set_style_text_color(name_label, lv_color_hex(YADS2_COLOR_DIM), LV_PART_MAIN);
     lv_obj_set_style_text_align(name_label, LV_TEXT_ALIGN_CENTER, LV_PART_MAIN);
     lv_label_set_long_mode(name_label, LV_LABEL_LONG_CLIP);
@@ -412,14 +484,15 @@ static void yads2_create_battery_row(lv_obj_t *parent) {
     for (int i = 0; i < YADS2_MAX_BATTERIES; i++) {
         struct yads2_battery_slot *slot = &battery_slots[i];
 
-        /* Percentage above the bar */
-        slot->pct = lv_label_create(row);
-        lv_obj_set_style_text_font(slot->pct, &FG_Medium_21, LV_PART_MAIN);
-        lv_obj_set_style_text_color(slot->pct, lv_color_hex(YADS2_COLOR_BATTERY_OK), LV_PART_MAIN);
-        lv_obj_set_style_text_align(slot->pct, LV_TEXT_ALIGN_CENTER, LV_PART_MAIN);
-        lv_label_set_text_static(slot->pct, stbuf_battery[i]);
+        /* "<L|R> <level>%" line above the gauge (one line per half/keyboard) */
+        slot->label = lv_label_create(row);
+        lv_obj_set_style_text_font(slot->label, &FG_Medium_21, LV_PART_MAIN);
+        lv_obj_set_style_text_color(slot->label, lv_color_hex(YADS2_COLOR_BATTERY_OK),
+                                    LV_PART_MAIN);
+        lv_obj_set_style_text_align(slot->label, LV_TEXT_ALIGN_CENTER, LV_PART_MAIN);
+        lv_label_set_text_static(slot->label, stbuf_battery[i]);
 
-        /* Horizontal bar (upstream YADS battery gauge style) */
+        /* Gauge filled to the reported level (upstream YADS battery gauge) */
         slot->bar = lv_bar_create(row);
         lv_obj_set_size(slot->bar, YADS2_BATTERY_BAR_MAX_WIDTH, YADS2_BATTERY_BAR_HEIGHT);
         lv_bar_set_range(slot->bar, 0, 100);
@@ -431,16 +504,10 @@ static void yads2_create_battery_row(lv_obj_t *parent) {
         lv_obj_set_style_bg_color(slot->bar, lv_color_hex(YADS2_COLOR_BAR_TRACK), LV_PART_MAIN);
         lv_obj_set_style_bg_color(slot->bar, lv_color_hex(YADS2_COLOR_BATTERY_OK),
                                   LV_PART_INDICATOR);
-
-        /* Source name underneath the bar (L / R / Aux / A1 / A2) */
-        slot->name = lv_label_create(row);
-        lv_obj_set_style_text_font(slot->name, &FG_Medium_20, LV_PART_MAIN);
-        lv_obj_set_style_text_color(slot->name, lv_color_hex(YADS2_COLOR_DIM), LV_PART_MAIN);
-        lv_obj_set_style_text_align(slot->name, LV_TEXT_ALIGN_CENTER, LV_PART_MAIN);
-        lv_label_set_text(slot->name, "");
     }
 
-    yads2_apply_battery_layout(1);
+    /* Preview the split layout (L + R) until real data arrives */
+    yads2_apply_battery_layout(YADS2_BATTERY_DEFAULT_SLOTS);
 }
 
 /* ========== Public API ========== */
@@ -489,14 +556,19 @@ void yads2_layout_update(uint8_t active_layer, const char *layer_name,
     const char *layer = (layer_name != NULL) ? layer_name : "";
 
     /* Battery slots: slot 0 = keyboard, followed by every peripheral that
-     * advertises data. Without a detected keyboard a single placeholder slot
-     * is kept so that the bottom row does not shift around while scanning. */
-    int count = 1;
+     * advertises data. While no keyboard has been detected yet the split
+     * layout (L + R) is previewed with the placeholder level so the bottom row
+     * already shows what a connected keyboard will look like. */
+    int count = YADS2_BATTERY_DEFAULT_SLOTS;
     if (have_keyboard) {
+        count = 1;
         for (int i = 0; i < YADS2_MAX_PERIPHERALS; i++) {
             if (peripheral_connected[i] || peripheral_battery[i] > 0) {
                 count = i + 2;
             }
+        }
+        if (count < 1) {
+            count = 1;
         }
     }
 
@@ -505,13 +577,8 @@ void yads2_layout_update(uint8_t active_layer, const char *layer_name,
         cached_valid = false; /* re-render texts/colors of the resized row */
     }
 
-    if (battery_row) {
-        if (have_keyboard) {
-            lv_obj_clear_flag(battery_row, LV_OBJ_FLAG_HIDDEN);
-        } else {
-            lv_obj_add_flag(battery_row, LV_OBJ_FLAG_HIDDEN);
-        }
-    }
+    /* The battery row stays visible even before a keyboard is detected: slots
+     * without data show the placeholder level (50%) instead of an empty half. */
 
     /* Keyboard name */
     if (!cached_valid || strncmp(name, cached_keyboard_name, sizeof(cached_keyboard_name)) != 0) {
@@ -597,6 +664,12 @@ void yads2_layout_destroy(void) {
     layer_label = NULL;
     mod_label = NULL;
     memset(battery_slots, 0, sizeof(battery_slots));
+    memset(slot_levels, 0, sizeof(slot_levels));
+    memset(slot_connected, 0, sizeof(slot_connected));
+    for (int i = 0; i < YADS2_MAX_BATTERIES; i++) {
+        slot_names[i][0] = '\0';
+        snprintf(stbuf_battery[i], sizeof(stbuf_battery[i]), "--");
+    }
 
     layout_container = NULL;
     layout_created = false;
