@@ -723,10 +723,10 @@ void yads2_layout_update(uint8_t active_layer, const char *layer_name,
         cached_battery_connected = battery_connected;
     }
 
-    /* 两角的左右手连接状态：某半只要上报了电量就算已连接；还没收到任何数据时
+    /* 两角的左右手连接状态：某半只要上报了电量或者有矩阵信息就算已连接；还没收到任何数据时
      * （且电量占位开启）两只手都按已连接显示，让界面看起来完整。
      * BLE 指示由 yads2_layout_set_ble() 驱动、层滚筒由 yads2_layout_set_layer()
-     * 驱动，所以这里不使用广播里的 profile/flags。 */
+     * 驱动， */
     ARG_UNUSED(ble_connected);
     ARG_UNUSED(ble_bonded);
     ARG_UNUSED(ble_profile);
