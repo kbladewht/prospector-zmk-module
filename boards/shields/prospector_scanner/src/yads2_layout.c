@@ -81,20 +81,22 @@ LV_FONT_DECLARE(lv_font_montserrat_16);
 #define YADS2_OUTPUT_USB_Y 34
 #define YADS2_OUTPUT_BLE_Y 54
 
-/* Centre: layer "roller" - at most 3 entries (the current layer and its
- * neighbours), the current one highlighted and drawn with the larger font.
+/* Centre: layer "roller" - exactly 3 entries with the current layer always in
+ * the middle row (its neighbours above and below), all drawn with the same
+ * font size; the current one is highlighted in white, the neighbours dimmed.
+ * Rows outside the keymap are hidden, so the highlighted layer stays centred.
  * The names are read from this firmware's own keymap via
  * zmk_keymap_layer_name(), so the full display-name is available (the status
  * advertisement only carries 4 characters of a layer name).
  * Default (no update yet): the first layer is highlighted.
  * yads2_layout_set_layer() moves the highlight to the current layer. */
 #define YADS2_LAYER_ROW_COUNT 3
-#define YADS2_LAYER_ROW_TOP_Y 56 /* top edge of the first (upper) row */
-#define YADS2_LAYER_ROW_STEP 31  /* vertical distance between the rows */
+#define YADS2_LAYER_ROW_TOP_Y 55 /* top edge of the upper row */
+#define YADS2_LAYER_ROW_STEP 35  /* = FR_Medium_32 line height, so spacing is even */
 #define YADS2_LAYER_ROW_WIDTH 250
 
 /* NerdFont modifier row, underneath the layer roller */
-#define YADS2_MOD_Y 156
+#define YADS2_MOD_Y 160
 
 /* Bottom: battery row (always visible - placeholder 50% until data arrives)
  * One entry per keyboard/half: "<L|R> <level>%" line with a gauge bar below.
@@ -102,10 +104,10 @@ LV_FONT_DECLARE(lv_font_montserrat_16);
  * RIGHT half (see status_advertisement.c), so a split keyboard shows two
  * entries labelled L and R. */
 #define YADS2_BATTERY_ROW_WIDTH 268
-#define YADS2_BATTERY_ROW_HEIGHT 44
+#define YADS2_BATTERY_ROW_HEIGHT 40
 #define YADS2_BATTERY_ROW_Y_OFFSET (-2)
 #define YADS2_BATTERY_LABEL_Y 0
-#define YADS2_BATTERY_BAR_Y 26
+#define YADS2_BATTERY_BAR_Y 24
 #define YADS2_BATTERY_BAR_HEIGHT 10
 #define YADS2_BATTERY_BAR_MAX_WIDTH 130
 #define YADS2_BATTERY_BAR_MIN_WIDTH 52
@@ -420,23 +422,13 @@ static void yads2_layer_name(uint8_t index, char *out, size_t out_len) {
     }
 }
 
-/* Draw the layer roller: a window of at most YADS2_LAYER_ROW_COUNT rows that
- * contains the current layer, which is drawn bigger and brighter than its
- * neighbours. The window slides to stay inside the keymap's layer list. */
+/* Draw the layer roller. The rows are ordered around the current layer, which
+ * therefore always sits in the middle row and stays vertically centred even at
+ * the first/last layer (the missing neighbour row is simply hidden). All rows
+ * use the same font; the current one is highlighted by colour. */
 static void yads2_render_layer_rows(void) {
     if (layer_count == 0 || layer_rows[0] == NULL) {
         return;
-    }
-
-    uint8_t visible = (layer_count < YADS2_LAYER_ROW_COUNT) ? layer_count
-                                                            : (uint8_t)YADS2_LAYER_ROW_COUNT;
-    uint8_t start = 0;
-
-    if (layer_current >= visible) {
-        start = (uint8_t)(layer_current - visible + 1);
-        if ((uint8_t)(start + visible) > layer_count) {
-            start = (uint8_t)(layer_count - visible);
-        }
     }
 
     for (uint8_t row = 0; row < YADS2_LAYER_ROW_COUNT; row++) {
@@ -445,24 +437,22 @@ static void yads2_render_layer_rows(void) {
             continue;
         }
 
-        uint8_t index = (uint8_t)(start + row);
-        if (row >= visible || index >= layer_count) {
+        int index = (int)layer_current - 1 + (int)row;
+        if (index < 0 || index >= (int)layer_count) {
             lv_obj_add_flag(label, LV_OBJ_FLAG_HIDDEN);
             continue;
         }
 
         char name[20];
-        bool current = (index == layer_current);
+        bool current = ((uint8_t)index == layer_current);
 
-        yads2_layer_name(index, name, sizeof(name));
+        yads2_layer_name((uint8_t)index, name, sizeof(name));
         snprintf(stbuf_layer_rows[row], sizeof(stbuf_layer_rows[row]), "%s", name);
 
-        lv_obj_set_style_text_font(label, current ? &FR_Medium_32 : &FG_Medium_21,
-                                   LV_PART_MAIN);
+        lv_label_set_text_static(label, stbuf_layer_rows[row]);
         lv_obj_set_style_text_color(label,
                                     lv_color_hex(current ? YADS2_COLOR_TEXT : YADS2_COLOR_DIM),
                                     LV_PART_MAIN);
-        lv_label_set_text_static(label, stbuf_layer_rows[row]);
         lv_obj_clear_flag(label, LV_OBJ_FLAG_HIDDEN);
     }
 }
@@ -553,11 +543,11 @@ static void yads2_create_top_row(lv_obj_t *parent) {
 }
 
 static void yads2_create_center(lv_obj_t *parent) {
-    /* Layer roller rows (previous / current / next); text, size and highlight
-     * are filled in by yads2_layout_set_layer() */
+    /* Layer roller rows; all rows share one font (the current layer is only
+     * highlighted by colour, so the row spacing stays even) */
     for (int row = 0; row < YADS2_LAYER_ROW_COUNT; row++) {
         layer_rows[row] = lv_label_create(parent);
-        lv_obj_set_style_text_font(layer_rows[row], &FG_Medium_21, LV_PART_MAIN);
+        lv_obj_set_style_text_font(layer_rows[row], &FR_Medium_32, LV_PART_MAIN);
         lv_obj_set_style_text_color(layer_rows[row], lv_color_hex(YADS2_COLOR_DIM),
                                     LV_PART_MAIN);
         lv_obj_set_style_text_align(layer_rows[row], LV_TEXT_ALIGN_CENTER, LV_PART_MAIN);

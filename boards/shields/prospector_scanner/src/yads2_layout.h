@@ -14,9 +14,11 @@
  *   connected, red cross = not connected)
  * - Keyboard name (top centre)
  * - Output status (USB / BLE) right aligned below the right-hand status
- * - Layer roller (centre): at most 3 entries - the current layer and its
- *   neighbours - with the current one highlighted and drawn with the larger
- *   font. The names come from this firmware's own keymap, so full
+ * - Layer roller (centre): exactly 3 entries with the current layer always in
+ *   the middle row (its neighbours above/below), all drawn at the same size;
+ *   the current one is highlighted in white, the neighbours dimmed. Rows
+ *   outside the keymap are hidden, so the highlight stays centred even on the
+ *   first/last layer. The names come from this firmware's own keymap, so full
  *   display-names are available (the advertisement only carries 4 characters).
  *   Before any update the first layer is highlighted;
  *   yads2_layout_set_layer() moves the highlight to the current layer.
