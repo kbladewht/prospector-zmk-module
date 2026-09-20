@@ -52,12 +52,14 @@ LV_FONT_DECLARE(lv_font_montserrat_16);
 #define YADS2_COLOR_TEXT          0xFFFFFF
 #define YADS2_COLOR_DIM           0x7B7D93
 #define YADS2_COLOR_PEER_OK       0x00FF00 /* hand connected (upstream: 0x00FF00) */
-#define YADS2_COLOR_BATTERY_OK    0xFFFFFF /* upstream: white */
-#define YADS2_COLOR_BATTERY_LOW   0xFFC000 /* upstream: LV_PALETTE_YELLOW */
-#define YADS2_COLOR_BATTERY_OFF   0xE63030 /* upstream: LV_PALETTE_RED */
-#define YADS2_COLOR_BAR_TRACK     0x202020
-#define YADS2_COLOR_BAR_LOW_TRACK 0x584028
-#define YADS2_COLOR_BAR_OFF_TRACK 0x5A2020
+/* Battery colours: traffic light. The label text uses the same colour as the
+ * bar fill, and the bar fades to a lighter shade towards its filled end. */
+#define YADS2_COLOR_BATTERY_HIGH   0x00E676 /* > 50%        */
+#define YADS2_COLOR_BATTERY_MID    0xFFC000 /* 11..50%      */
+#define YADS2_COLOR_BATTERY_OFF    0xE63030 /* <= 10%, no data, disconnected */
+#define YADS2_COLOR_BAR_HIGH_TRACK 0x0B3D22
+#define YADS2_COLOR_BAR_MID_TRACK  0x4A3808
+#define YADS2_COLOR_BAR_LOW_TRACK  0x4A1010
 
 /* Level at or below which the battery turns yellow (upstream YADS: <= 10%) */
 #define YADS2_LOW_BATTERY_THRESHOLD 10
@@ -263,6 +265,19 @@ static void yads2_apply_battery_layout(int count) {
     battery_slot_count = count;
 }
 
+/* Blend a colour towards white (used for the gradient end of a battery bar) */
+static uint32_t yads2_lighten(uint32_t color, uint8_t amount) {
+    uint32_t r = (color >> 16) & 0xFF;
+    uint32_t g = (color >> 8) & 0xFF;
+    uint32_t b = color & 0xFF;
+
+    r += ((0xFF - r) * amount) / 0xFF;
+    g += ((0xFF - g) * amount) / 0xFF;
+    b += ((0xFF - b) * amount) / 0xFF;
+
+    return (r << 16) | (g << 8) | b;
+}
+
 /* Compose "<name> <level>%" (or "<name> --" while unknown) and colour one slot */
 static void yads2_render_battery_slot(int slot) {
     if (slot < 0 || slot >= YADS2_MAX_BATTERIES) {
@@ -274,21 +289,18 @@ static void yads2_render_battery_slot(int slot) {
     /* Until a level arrives the placeholder (50% by default) is shown so that
      * the bottom row always looks complete. */
     uint8_t level = have_level ? slot_levels[slot] : (uint8_t)YADS2_BATTERY_PLACEHOLDER_LEVEL;
-    bool low = level > 0 && level <= YADS2_LOW_BATTERY_THRESHOLD;
 
-    uint32_t text_color, fill_color, track_color;
-    if (level == 0) {
-        text_color = YADS2_COLOR_BATTERY_OFF;
-        fill_color = YADS2_COLOR_BATTERY_OFF;
-        track_color = YADS2_COLOR_BAR_OFF_TRACK;
-    } else if (low) {
-        text_color = YADS2_COLOR_BATTERY_LOW;
-        fill_color = YADS2_COLOR_BATTERY_LOW;
+    /* Traffic light: level > 50% green, 11..50% amber, <= 10% or no data red */
+    uint32_t state_color, track_color;
+    if (level == 0 || level <= YADS2_LOW_BATTERY_THRESHOLD) {
+        state_color = YADS2_COLOR_BATTERY_OFF;
         track_color = YADS2_COLOR_BAR_LOW_TRACK;
+    } else if (level <= 50) {
+        state_color = YADS2_COLOR_BATTERY_MID;
+        track_color = YADS2_COLOR_BAR_MID_TRACK;
     } else {
-        text_color = YADS2_COLOR_BATTERY_OK;
-        fill_color = YADS2_COLOR_BATTERY_OK;
-        track_color = YADS2_COLOR_BAR_TRACK;
+        state_color = YADS2_COLOR_BATTERY_HIGH;
+        track_color = YADS2_COLOR_BAR_HIGH_TRACK;
     }
 
     if (w->label) {
@@ -310,13 +322,16 @@ static void yads2_render_battery_slot(int slot) {
             snprintf(stbuf_battery[slot], sizeof(stbuf_battery[slot]), "--");
         }
         lv_label_set_text_static(w->label, stbuf_battery[slot]);
-        lv_obj_set_style_text_color(w->label, lv_color_hex(text_color), LV_PART_MAIN);
+        lv_obj_set_style_text_color(w->label, lv_color_hex(state_color), LV_PART_MAIN);
     }
 
     if (w->bar) {
         lv_bar_set_value(w->bar, level, LV_ANIM_OFF);
         lv_obj_set_style_bg_color(w->bar, lv_color_hex(track_color), LV_PART_MAIN);
-        lv_obj_set_style_bg_color(w->bar, lv_color_hex(fill_color), LV_PART_INDICATOR);
+        lv_obj_set_style_bg_color(w->bar, lv_color_hex(state_color), LV_PART_INDICATOR);
+        lv_obj_set_style_bg_grad_color(w->bar, lv_color_hex(yads2_lighten(state_color, 120)),
+                                       LV_PART_INDICATOR);
+        lv_obj_set_style_bg_grad_dir(w->bar, LV_GRAD_DIR_HOR, LV_PART_INDICATOR);
     }
 }
 
@@ -573,26 +588,32 @@ static void yads2_create_battery_row(lv_obj_t *parent) {
     for (int i = 0; i < YADS2_MAX_BATTERIES; i++) {
         struct yads2_battery_slot *slot = &battery_slots[i];
 
-        /* "<L|R> <level>%" line above the gauge (one line per half/keyboard) */
+        /* "<L|R> <level>%" line above the gauge - semibold font for the bold
+         * look, colour follows the battery state */
         slot->label = lv_label_create(row);
-        lv_obj_set_style_text_font(slot->label, &FG_Medium_21, LV_PART_MAIN);
-        lv_obj_set_style_text_color(slot->label, lv_color_hex(YADS2_COLOR_BATTERY_OK),
+        lv_obj_set_style_text_font(slot->label, &DINishCondensed_SemiBold_22, LV_PART_MAIN);
+        lv_obj_set_style_text_color(slot->label, lv_color_hex(YADS2_COLOR_BATTERY_HIGH),
                                     LV_PART_MAIN);
         lv_obj_set_style_text_align(slot->label, LV_TEXT_ALIGN_CENTER, LV_PART_MAIN);
         lv_label_set_text_static(slot->label, stbuf_battery[i]);
 
-        /* Gauge filled to the reported level (upstream YADS battery gauge) */
+        /* Gauge filled to the reported level (colour + gradient set on render) */
         slot->bar = lv_bar_create(row);
         lv_obj_set_size(slot->bar, YADS2_BATTERY_BAR_MAX_WIDTH, YADS2_BATTERY_BAR_HEIGHT);
         lv_bar_set_range(slot->bar, 0, 100);
         lv_bar_set_value(slot->bar, 0, LV_ANIM_OFF);
-        lv_obj_set_style_radius(slot->bar, 2, LV_PART_MAIN);
-        lv_obj_set_style_radius(slot->bar, 2, LV_PART_INDICATOR);
+        lv_obj_set_style_radius(slot->bar, 3, LV_PART_MAIN);
+        lv_obj_set_style_radius(slot->bar, 3, LV_PART_INDICATOR);
         lv_obj_set_style_bg_opa(slot->bar, LV_OPA_COVER, LV_PART_MAIN);
         lv_obj_set_style_bg_opa(slot->bar, LV_OPA_COVER, LV_PART_INDICATOR);
-        lv_obj_set_style_bg_color(slot->bar, lv_color_hex(YADS2_COLOR_BAR_TRACK), LV_PART_MAIN);
-        lv_obj_set_style_bg_color(slot->bar, lv_color_hex(YADS2_COLOR_BATTERY_OK),
+        lv_obj_set_style_bg_color(slot->bar, lv_color_hex(YADS2_COLOR_BAR_HIGH_TRACK),
+                                  LV_PART_MAIN);
+        lv_obj_set_style_bg_color(slot->bar, lv_color_hex(YADS2_COLOR_BATTERY_HIGH),
                                   LV_PART_INDICATOR);
+        lv_obj_set_style_bg_grad_color(
+            slot->bar, lv_color_hex(yads2_lighten(YADS2_COLOR_BATTERY_HIGH, 120)),
+            LV_PART_INDICATOR);
+        lv_obj_set_style_bg_grad_dir(slot->bar, LV_GRAD_DIR_HOR, LV_PART_INDICATOR);
     }
 
     /* Preview the split layout (L + R) until real data arrives */
