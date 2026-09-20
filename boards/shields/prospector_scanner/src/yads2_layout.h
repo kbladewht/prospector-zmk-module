@@ -14,10 +14,12 @@
  *   connected, red cross = not connected)
  * - Keyboard name (top centre)
  * - Output status (USB / BLE) right aligned below the right-hand status
- * - Layer list (centre): every layer of this firmware's own keymap is listed
- *   under its full display-name, the current layer is highlighted and the list
- *   scrolls when there are more layers than rows. Before any update the first
- *   layer is highlighted; yads2_layout_set_layer() switches the highlight.
+ * - Layer roller (centre): at most 3 entries - the current layer and its
+ *   neighbours - with the current one highlighted and drawn with the larger
+ *   font. The names come from this firmware's own keymap, so full
+ *   display-names are available (the advertisement only carries 4 characters).
+ *   Before any update the first layer is highlighted;
+ *   yads2_layout_set_layer() moves the highlight to the current layer.
  * - Modifier icons (NerdFont row below the layer list)
  * - Battery level per half along the bottom edge
  *

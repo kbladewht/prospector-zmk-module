@@ -266,8 +266,9 @@ config PROSPECTOR_DEFAULT_LAYOUT
       2 = Operator (minimalist with dot indicators)
       3 = Radii (circular wheel indicator)
       4 = YADS2 (YADS-style screen: left/right half connection status in the
-          top corners, keyboard name, output status, centred layer, NerdFont
-          modifiers and battery level per half along the bottom)
+          top corners, keyboard name, output status, layer roller with the
+          current keymap layer highlighted, NerdFont modifiers and battery
+          level per half along the bottom)
 
 config PROSPECTOR_MULTI_KEYBOARD
     bool "Support multiple keyboards"

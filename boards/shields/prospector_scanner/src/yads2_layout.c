@@ -81,19 +81,19 @@ LV_FONT_DECLARE(lv_font_montserrat_16);
 #define YADS2_OUTPUT_USB_Y 34
 #define YADS2_OUTPUT_BLE_Y 54
 
-/* Centre: list of all keymap layer names, the current one highlighted.
+/* Centre: layer "roller" - at most 3 entries (the current layer and its
+ * neighbours), the current one highlighted and drawn with the larger font.
  * The names are read from this firmware's own keymap via
- * zmk_keymap_layer_name() - locally, so the full display-name is available
- * (the status advertisement only carries 4 characters of a layer name).
+ * zmk_keymap_layer_name(), so the full display-name is available (the status
+ * advertisement only carries 4 characters of a layer name).
  * Default (no update yet): the first layer is highlighted.
- * yads2_layout_set_layer() scrolls/highlights the current one. */
-#define YADS2_LAYER_MAX_ROWS 4
-#define YADS2_LAYER_ROW_HEIGHT 22
-#define YADS2_LAYER_LIST_TOP_Y 66
-#define YADS2_LAYER_MARKER_ACTIVE "> "
-#define YADS2_LAYER_MARKER_IDLE "  "
+ * yads2_layout_set_layer() moves the highlight to the current layer. */
+#define YADS2_LAYER_ROW_COUNT 3
+#define YADS2_LAYER_ROW_TOP_Y 56 /* top edge of the first (upper) row */
+#define YADS2_LAYER_ROW_STEP 31  /* vertical distance between the rows */
+#define YADS2_LAYER_ROW_WIDTH 250
 
-/* NerdFont modifier row, underneath the layer list */
+/* NerdFont modifier row, underneath the layer roller */
 #define YADS2_MOD_Y 156
 
 /* Bottom: battery row (always visible - placeholder 50% until data arrives)
@@ -132,7 +132,7 @@ static const char *mod_symbols[4] = {
 /* ========== Static text buffers ==========
  * lv_label_set_text_static() keeps LVGL from re-allocating label text on every
  * advertisement, which fragments the LVGL pool over hours of operation. */
-static char stbuf_layer_rows[YADS2_LAYER_MAX_ROWS][24] = {{""}, {""}, {""}, {""}};
+static char stbuf_layer_rows[YADS2_LAYER_ROW_COUNT][24] = {{""}, {""}, {""}};
 static char stbuf_name[24] = "Receiver...";
 static char stbuf_peer[2][8] = {{""}, {""}};
 static char stbuf_usb[24] = "";
@@ -152,7 +152,7 @@ static lv_obj_t *peer_right_label = NULL;
 static lv_obj_t *name_label = NULL;
 static lv_obj_t *usb_label = NULL;
 static lv_obj_t *ble_label = NULL;
-static lv_obj_t *layer_rows[YADS2_LAYER_MAX_ROWS] = {NULL};
+static lv_obj_t *layer_rows[YADS2_LAYER_ROW_COUNT] = {NULL};
 static lv_obj_t *mod_label = NULL;
 static lv_obj_t *battery_row = NULL;
 static struct yads2_battery_slot battery_slots[YADS2_MAX_BATTERIES];
@@ -166,10 +166,9 @@ static int slot_widths[YADS2_MAX_BATTERIES] = {0, 0, 0, 0};
 static bool layout_created = false;
 static int battery_slot_count = 0;
 
-/* Layer list state: the names come from this firmware's keymap */
-static uint8_t layer_count = 0;        /* number of layers in the keymap */
-static uint8_t layer_current = 0;      /* highlighted layer */
-static uint8_t layer_window_start = 0; /* first visible row while scrolling */
+/* Layer roller state: the names come from this firmware's keymap */
+static uint8_t layer_count = 0;   /* number of layers in the keymap */
+static uint8_t layer_current = 0; /* highlighted layer */
 
 /* Cached values - updates only touch LVGL when something actually changed */
 static bool cached_valid = false;
@@ -421,29 +420,32 @@ static void yads2_layer_name(uint8_t index, char *out, size_t out_len) {
     }
 }
 
-/* Draw the visible slice of the layer list, scrolling so that the highlighted
- * layer always stays on screen */
+/* Draw the layer roller: a window of at most YADS2_LAYER_ROW_COUNT rows that
+ * contains the current layer, which is drawn bigger and brighter than its
+ * neighbours. The window slides to stay inside the keymap's layer list. */
 static void yads2_render_layer_rows(void) {
     if (layer_count == 0 || layer_rows[0] == NULL) {
         return;
     }
 
-    uint8_t visible = (layer_count < YADS2_LAYER_MAX_ROWS) ? layer_count
-                                                           : (uint8_t)YADS2_LAYER_MAX_ROWS;
+    uint8_t visible = (layer_count < YADS2_LAYER_ROW_COUNT) ? layer_count
+                                                            : (uint8_t)YADS2_LAYER_ROW_COUNT;
+    uint8_t start = 0;
 
-    if (layer_current < layer_window_start) {
-        layer_window_start = layer_current;
-    } else if (layer_current >= (uint8_t)(layer_window_start + visible)) {
-        layer_window_start = (uint8_t)(layer_current - visible + 1);
+    if (layer_current >= visible) {
+        start = (uint8_t)(layer_current - visible + 1);
+        if ((uint8_t)(start + visible) > layer_count) {
+            start = (uint8_t)(layer_count - visible);
+        }
     }
 
-    for (uint8_t row = 0; row < YADS2_LAYER_MAX_ROWS; row++) {
+    for (uint8_t row = 0; row < YADS2_LAYER_ROW_COUNT; row++) {
         lv_obj_t *label = layer_rows[row];
         if (label == NULL) {
             continue;
         }
 
-        uint8_t index = (uint8_t)(layer_window_start + row);
+        uint8_t index = (uint8_t)(start + row);
         if (row >= visible || index >= layer_count) {
             lv_obj_add_flag(label, LV_OBJ_FLAG_HIDDEN);
             continue;
@@ -453,13 +455,14 @@ static void yads2_render_layer_rows(void) {
         bool current = (index == layer_current);
 
         yads2_layer_name(index, name, sizeof(name));
-        snprintf(stbuf_layer_rows[row], sizeof(stbuf_layer_rows[row]), "%s%s",
-                 current ? YADS2_LAYER_MARKER_ACTIVE : YADS2_LAYER_MARKER_IDLE, name);
+        snprintf(stbuf_layer_rows[row], sizeof(stbuf_layer_rows[row]), "%s", name);
 
-        lv_label_set_text_static(label, stbuf_layer_rows[row]);
+        lv_obj_set_style_text_font(label, current ? &FR_Medium_32 : &FG_Medium_21,
+                                   LV_PART_MAIN);
         lv_obj_set_style_text_color(label,
                                     lv_color_hex(current ? YADS2_COLOR_TEXT : YADS2_COLOR_DIM),
                                     LV_PART_MAIN);
+        lv_label_set_text_static(label, stbuf_layer_rows[row]);
         lv_obj_clear_flag(label, LV_OBJ_FLAG_HIDDEN);
     }
 }
@@ -550,18 +553,18 @@ static void yads2_create_top_row(lv_obj_t *parent) {
 }
 
 static void yads2_create_center(lv_obj_t *parent) {
-    /* One row per keymap layer; the text and highlight are filled in by
-     * yads2_layout_set_layer() */
-    for (int row = 0; row < YADS2_LAYER_MAX_ROWS; row++) {
+    /* Layer roller rows (previous / current / next); text, size and highlight
+     * are filled in by yads2_layout_set_layer() */
+    for (int row = 0; row < YADS2_LAYER_ROW_COUNT; row++) {
         layer_rows[row] = lv_label_create(parent);
         lv_obj_set_style_text_font(layer_rows[row], &FG_Medium_21, LV_PART_MAIN);
         lv_obj_set_style_text_color(layer_rows[row], lv_color_hex(YADS2_COLOR_DIM),
                                     LV_PART_MAIN);
         lv_obj_set_style_text_align(layer_rows[row], LV_TEXT_ALIGN_CENTER, LV_PART_MAIN);
         lv_label_set_long_mode(layer_rows[row], LV_LABEL_LONG_CLIP);
-        lv_obj_set_width(layer_rows[row], 250);
+        lv_obj_set_width(layer_rows[row], YADS2_LAYER_ROW_WIDTH);
         lv_obj_align(layer_rows[row], LV_ALIGN_TOP_MID, 0,
-                     YADS2_LAYER_LIST_TOP_Y + row * YADS2_LAYER_ROW_HEIGHT);
+                     YADS2_LAYER_ROW_TOP_Y + row * YADS2_LAYER_ROW_STEP);
         lv_obj_add_flag(layer_rows[row], LV_OBJ_FLAG_HIDDEN);
     }
 
@@ -637,12 +640,11 @@ lv_obj_t *yads2_layout_create(lv_obj_t *parent) {
     /* Force a full refresh on the first update */
     cached_valid = false;
 
-    /* Layer list: the names come from this firmware's keymap; the first layer
+    /* Layer roller: the names come from this firmware's keymap; the first layer
      * is highlighted until the current layer is supplied through
      * yads2_layout_set_layer() */
     layer_count = (uint8_t)ZMK_KEYMAP_LAYERS_LEN;
     layer_current = 0;
-    layer_window_start = 0;
 
     layout_created = true;
     yads2_layout_set_layer(0);
@@ -774,7 +776,7 @@ void yads2_layout_destroy(void) {
         }
     }
 
-    for (int row = 0; row < YADS2_LAYER_MAX_ROWS; row++) {
+    for (int row = 0; row < YADS2_LAYER_ROW_COUNT; row++) {
         if (layer_rows[row]) {
             lv_obj_del(layer_rows[row]);
             layer_rows[row] = NULL;
@@ -804,7 +806,6 @@ void yads2_layout_destroy(void) {
     cached_keyboard_name[0] = '\0';
     layer_count = 0;
     layer_current = 0;
-    layer_window_start = 0;
 
     LOG_INF("YADS2 layout destroyed");
 }
