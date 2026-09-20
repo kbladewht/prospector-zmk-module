@@ -2,25 +2,23 @@
  * Copyright (c) 2024 The ZMK Contributors
  * SPDX-License-Identifier: MIT
  *
- * YADS2 Layout for Scanner Mode
+ * YADS2 布局（Scanner 模式）
  *
- * Second YADS-style screen, arranged for the scanner:
- * - Left/right peripheral (hand) connection status in the top corners
- *   (left corner = left half, right corner = right half)
- * - Keyboard name at the top centre
- * - Output status (USB / BLE) right aligned below the right-hand status
- * - Active layer in the middle, NerdFont modifier icons underneath
- * - Battery level per half along the bottom edge
+ * 第二种 YADS 风格界面，按扫描器（dongle）的用途排布：
+ * - 左上/右上角：左右手的连接状态（左角 = 左手，右角 = 右手）
+ * - 顶部中间：键盘名
+ * - 左右角内侧：BLE 指示（默认占位 BLE 1 / BLE 2）
+ * - 中间：层滚筒（3 行，当前层居中高亮），下方是 NerdFont 修饰键图标
+ * - 底部：每只手各自的电量（百分比 + 进度条）
  *
- * The widget arrangement is derived from the original YADS status screen,
- * janpfischer/zmk-dongle-screen (MIT License):
+ * 排布参考上游 YADS 界面 janpfischer/zmk-dongle-screen（MIT 许可）：
  * https://github.com/janpfischer/zmk-dongle-screen/tree/main/boards/shields/dongle_screen
- * WPM is intentionally not shown on this layout.
+ * 本布局不显示 WPM，也不显示 USB/输出状态（本机是 dongle，由 USB 供电）。
  *
- * The data itself comes from the scanner's BLE advertisement receiver
- * (structure prospector_keyboard_data), not from local ZMK state.
+ * 数据来自扫描器的 BLE 广播接收（结构体 prospector_keyboard_data），
+ * 不使用本机 ZMK 状态。
  *
- * Display: 280x240 usable area (same coordinate space as the other layouts).
+ * 显示区：280x240（与其他布局同一坐标系）。
  */
 
 #include "yads2_layout.h"
@@ -35,38 +33,33 @@
 
 LOG_MODULE_REGISTER(yads2_layout, CONFIG_ZMK_LOG_LEVEL);
 
-/* LVGL built-in font used for arbitrary text (keyboard name, peripheral
- * status, output status) and for the LV_SYMBOL_* glyphs.
- * The Carrefinho fonts are glyph subsets - e.g. FG_Medium_20 stops at U+0060
- * and therefore has no lowercase letters, which LVGL would draw as placeholder
- * boxes (CONFIG_LV_USE_FONT_PLACEHOLDER=y). Only use subset fonts for fixed
- * uppercase/digit strings (FG_Medium_21 = "L 85%"). */
+/* LVGL 内置字体：用于任意文本（键盘名、手的连接状态、BLE 指示）以及
+ * LV_SYMBOL_* 图标字形。
+ * Carrefinho 字体是字形子集 —— 例如 FG_Medium_20 只到 U+0060，没有小写字母，
+ * LVGL 会把缺失字形画成占位方框（CONFIG_LV_USE_FONT_PLACEHOLDER=y）。
+ * 这些子集字体只用于固定的全大写/数字字符串。 */
 LV_FONT_DECLARE(lv_font_montserrat_16);
 
-/* ========== Colors ==========
- * Palette follows the upstream YADS status screen
- * (janpfischer/zmk-dongle-screen): white text by default, colour only on the
- * battery widgets. The upstream output widget is not used: this is a dongle, so
- * USB always supplies it and the BLE indicators are placeholders driven by
- * yads2_layout_set_ble(). */
+/* ========== 颜色 ==========
+ * 基调沿用上游 YADS 界面（janpfischer/zmk-dongle-screen）：默认白字，
+ * 只有电池有彩色。上游的 output（USB/BLE）控件不使用：本机是 dongle，
+ * USB 一定在供电，BLE 指示由 yads2_layout_set_ble() 驱动。 */
 #define YADS2_COLOR_TEXT          0xFFFFFF
 #define YADS2_COLOR_DIM           0x7B7D93
-#define YADS2_COLOR_PEER_OK       0x00FF00 /* hand connected (upstream: 0x00FF00) */
-/* Battery colours: traffic light. The label text uses the same colour as the
- * bar fill, and the bar fades to a lighter shade towards its filled end. */
-#define YADS2_COLOR_BATTERY_HIGH   0x00E676 /* > 50%        */
-#define YADS2_COLOR_BATTERY_MID    0xFFC000 /* 11..50%      */
-#define YADS2_COLOR_BATTERY_OFF    0xE63030 /* <= 10%, no data, disconnected */
+#define YADS2_COLOR_PEER_OK       0x00FF00 /* 该手已连接 */
+/* 电池配色 = 红绿灯。文字与进度条同色，进度条在填充端渐变到更亮的同色。 */
+#define YADS2_COLOR_BATTERY_HIGH   0x00E676 /* > 50%  */
+#define YADS2_COLOR_BATTERY_MID    0xFFC000 /* 11..50% */
+#define YADS2_COLOR_BATTERY_OFF    0xE63030 /* <=10%、无数据、未连接 */
 #define YADS2_COLOR_BAR_HIGH_TRACK 0x0B3D22
 #define YADS2_COLOR_BAR_MID_TRACK  0x4A3808
 #define YADS2_COLOR_BAR_LOW_TRACK  0x4A1010
 
-/* Level at or below which the battery turns yellow (upstream YADS: <= 10%) */
+/* 电量降到该值（含）以下就显示红色（上游 YADS 为 <= 10%） */
 #define YADS2_LOW_BATTERY_THRESHOLD 10
 
-/* ========== Geometry (280x240 coordinate space) ========== */
-/* Top row: left-hand status + BLE 1 (left corner), keyboard name (centre),
- * BLE 2 + right-hand status (right corner) */
+/* ========== 几何位置（280x240 坐标系） ========== */
+/* 顶部一行：左角 = 左手状态 + BLE 1，中间 = 键盘名，右角 = BLE 2 + 右手状态 */
 #define YADS2_NAME_Y 8
 #define YADS2_NAME_WIDTH 104
 #define YADS2_PEER_LEFT_X 10
@@ -75,28 +68,23 @@ LV_FONT_DECLARE(lv_font_montserrat_16);
 #define YADS2_BLE_RIGHT_X_OFFSET (-50)
 #define YADS2_TOP_Y 6
 
-/* Centre: layer "roller" - exactly 3 entries with the current layer always in
- * the middle row (its neighbours above and below), all drawn with the same
- * font size; the current one is highlighted in white, the neighbours dimmed.
- * Rows outside the keymap are hidden, so the highlighted layer stays centred.
- * The names are read from this firmware's own keymap via
- * zmk_keymap_layer_name(), so the full display-name is available (the status
- * advertisement only carries 4 characters of a layer name).
- * Default (no update yet): the first layer is highlighted.
- * yads2_layout_set_layer() moves the highlight to the current layer. */
+/* 中间：层滚筒 —— 固定 3 行，当前层永远在中间行（上下为相邻层），三行同一字号；
+ * 当前层白色高亮、相邻层灰色。超出 keymap 范围的行隐藏，因此高亮始终居中。
+ * 层名通过 zmk_keymap_layer_name() 从本机 keymap 读取，是完整名字
+ * （广播里只有 4 个字符）。默认（尚未收到更新）高亮第一层，
+ * 之后由 yads2_layout_set_layer() 切换。 */
 #define YADS2_LAYER_ROW_COUNT 3
-#define YADS2_LAYER_ROW_TOP_Y 55 /* top edge of the upper row */
-#define YADS2_LAYER_ROW_STEP 35  /* = FR_Medium_32 line height, so spacing is even */
+#define YADS2_LAYER_ROW_TOP_Y 55 /* 最上面一行的顶端 */
+#define YADS2_LAYER_ROW_STEP 35  /* = FR_Medium_32 行高，保证行距均匀 */
 #define YADS2_LAYER_ROW_WIDTH 250
 
-/* NerdFont modifier row, underneath the layer roller */
+/* NerdFont 修饰键行，在层滚筒下方 */
 #define YADS2_MOD_Y 160
 
-/* Bottom: battery row (always visible - placeholder 50% until data arrives)
- * One entry per keyboard/half: "<L|R> <level>%" line with a gauge bar below.
- * The keyboard publishes battery_level = LEFT half and peripheral_battery[0] =
- * RIGHT half (see status_advertisement.c), so a split keyboard shows two
- * entries labelled L and R. */
+/* 底部：电量行（始终显示，未收到数据时用 50% 占位）
+ * 每只键盘/手一条："<L|R> <电量>%"，下面是进度条。
+ * 键盘把左半放在 battery_level、右半放在 peripheral_battery[0]
+ * （见 status_advertisement.c），所以分体键盘显示 L、R 两条。 */
 #define YADS2_BATTERY_ROW_WIDTH 268
 #define YADS2_BATTERY_ROW_HEIGHT 40
 #define YADS2_BATTERY_ROW_Y_OFFSET (-2)
@@ -106,28 +94,26 @@ LV_FONT_DECLARE(lv_font_montserrat_16);
 #define YADS2_BATTERY_BAR_MAX_WIDTH 130
 #define YADS2_BATTERY_BAR_MIN_WIDTH 52
 #define YADS2_BATTERY_BAR_GAP 18
-/* Placeholder level shown for a slot that has not reported a level yet.
- * Set to 0 to fall back to the "--" style instead. */
+/* 某槽位还没上报电量时显示的占位值；改成 0 则回到 "--" 样式 */
 #define YADS2_BATTERY_PLACEHOLDER_LEVEL 50
 
-/* Slots previewed (and filled with the placeholder) while no keyboard data is
- * available yet - 2 = split keyboard look (L + R). */
+/* 还没有键盘数据时先预览的槽位数（2 = 分体左右两半的样子） */
 #define YADS2_BATTERY_DEFAULT_SLOTS 2
 
-/* Slots narrower than this drop the '%' to keep "L 85" readable */
+/* 槽位宽度小于该值时省略 '%'，保证 "L 85" 不被裁切 */
 #define YADS2_BATTERY_LABEL_NARROW_WIDTH 80
 
-/* ========== NerdFont modifier symbols (same glyphs as the Classic screen) ========== */
+/* ========== NerdFont 修饰键符号（与 Classic 界面同一套字形） ========== */
 static const char *mod_symbols[4] = {
-    "\xf3\xb0\x98\xb4", /* Control (U+F0634) */
-    "\xf3\xb0\x98\xb6", /* Shift   (U+F0636) */
-    "\xf3\xb0\x98\xb5", /* Alt     (U+F0635) */
-    "\xf3\xb0\x98\xb3"  /* GUI     (U+F0633) */
+    "\xf3\xb0\x98\xb4", /* Ctrl  (U+F0634) */
+    "\xf3\xb0\x98\xb6", /* Shift (U+F0636) */
+    "\xf3\xb0\x98\xb5", /* Alt   (U+F0635) */
+    "\xf3\xb0\x98\xb3"  /* GUI   (U+F0633) */
 };
 
-/* ========== Static text buffers ==========
- * lv_label_set_text_static() keeps LVGL from re-allocating label text on every
- * advertisement, which fragments the LVGL pool over hours of operation. */
+/* ========== 静态文本缓冲 ==========
+ * 用 lv_label_set_text_static() 可避免 LVGL 每条广播都重新分配标签文本，
+ * 否则长时间运行会让内存池碎片化。 */
 static char stbuf_layer_rows[YADS2_LAYER_ROW_COUNT][24] = {{""}, {""}, {""}};
 static char stbuf_name[24] = "Receiver...";
 static char stbuf_peer[2][8] = {{"L "}, {"R "}};
@@ -135,10 +121,10 @@ static char stbuf_ble_slots[2][12] = {{"BLE 1"}, {"BLE 2"}};
 static char stbuf_mod[64] = "";
 static char stbuf_battery[YADS2_MAX_BATTERIES][12] = {{"--"}, {"--"}, {"--"}, {"--"}};
 
-/* ========== Widget state ========== */
+/* ========== 控件状态 ========== */
 struct yads2_battery_slot {
-    lv_obj_t *label; /* "<L|R> <level>%" */
-    lv_obj_t *bar;   /* gauge filled to the level */
+    lv_obj_t *label; /* "<L|R> <电量>%" */
+    lv_obj_t *bar;   /* 按电量填充的进度条 */
 };
 
 static lv_obj_t *layout_container = NULL;
@@ -150,7 +136,7 @@ static lv_obj_t *mod_label = NULL;
 static lv_obj_t *battery_row = NULL;
 static struct yads2_battery_slot battery_slots[YADS2_MAX_BATTERIES];
 
-/* Per-slot content: label ("L", "R", "Aux", "A1", "A2"), last level and state */
+/* 每个槽位的内容：名称（"L"、"R"、"Aux"、"A1"、"A2"）、最新电量与连接状态 */
 static char slot_names[YADS2_MAX_BATTERIES][6] = {{""}, {""}, {""}, {""}};
 static uint8_t slot_levels[YADS2_MAX_BATTERIES] = {0, 0, 0, 0};
 static bool slot_connected[YADS2_MAX_BATTERIES] = {false, false, false, false};
@@ -159,15 +145,15 @@ static int slot_widths[YADS2_MAX_BATTERIES] = {0, 0, 0, 0};
 static bool layout_created = false;
 static int battery_slot_count = 0;
 
-/* Layer roller state: the names come from this firmware's keymap */
-static uint8_t layer_count = 0;   /* number of layers in the keymap */
-static uint8_t layer_current = 0; /* highlighted layer */
+/* 层滚筒状态：层名来自本机 keymap */
+static uint8_t layer_count = 0;   /* keymap 里的层数 */
+static uint8_t layer_current = 0; /* 当前高亮的层 */
 
-/* BLE indicators in the top corners: 1..5 = profile number, anything else
- * shows "BLE -". Placeholders by default (BLE 1 / BLE 2). */
+/* 左上/右上角的 BLE 指示：1..5 = profile 号，其它值显示 "BLE -"；
+ * 默认是占位（BLE 1 / BLE 2）。 */
 static uint8_t ble_slot_profiles[2] = {1, 2};
 
-/* Cached values - updates only touch LVGL when something actually changed */
+/* 缓存值 —— 只有真正变化时才去动 LVGL */
 static bool cached_valid = false;
 static bool cached_peer[2] = {false, false};
 static uint8_t cached_mods = 0;
@@ -177,10 +163,10 @@ static bool cached_battery_connected = false;
 static uint8_t cached_peripheral_battery[YADS2_MAX_PERIPHERALS] = {0};
 static bool cached_peripheral_connected[YADS2_MAX_PERIPHERALS] = {false};
 
-/* Refresh one battery slot (label text + gauge) from the stored values */
+/* 用保存的值刷新一个电量槽位（文字 + 进度条） */
 static void yads2_render_battery_slot(int slot);
 
-/* Battery source names, matching the Classic screen's naming by battery count */
+/* 按电量条数给出名称，与 Classic 界面一致 */
 static const char *const *battery_names_for_count(int count) {
     static const char *const names_1[] = {""};
     static const char *const names_2[] = {"L", "R"};
@@ -199,9 +185,9 @@ static const char *const *battery_names_for_count(int count) {
     }
 }
 
-/* ========== Battery row ========== */
+/* ========== 电量行 ========== */
 
-/* Size and centre the battery slots for the given number of keyboards/halves */
+/* 按键盘/手的数量计算槽位宽度并居中排布 */
 static void yads2_apply_battery_layout(int count) {
     if (!layout_container || count < 1) {
         return;
@@ -265,7 +251,7 @@ static void yads2_apply_battery_layout(int count) {
     battery_slot_count = count;
 }
 
-/* Blend a colour towards white (used for the gradient end of a battery bar) */
+/* 把颜色向白色混合（用于电池进度条的渐变末端） */
 static uint32_t yads2_lighten(uint32_t color, uint8_t amount) {
     uint32_t r = (color >> 16) & 0xFF;
     uint32_t g = (color >> 8) & 0xFF;
@@ -278,7 +264,7 @@ static uint32_t yads2_lighten(uint32_t color, uint8_t amount) {
     return (r << 16) | (g << 8) | b;
 }
 
-/* Compose "<name> <level>%" (or "<name> --" while unknown) and colour one slot */
+/* 拼出 "<名称> <电量>%"（未知时 "<名称> --"）并给该槽位上色 */
 static void yads2_render_battery_slot(int slot) {
     if (slot < 0 || slot >= YADS2_MAX_BATTERIES) {
         return;
@@ -286,11 +272,10 @@ static void yads2_render_battery_slot(int slot) {
 
     struct yads2_battery_slot *w = &battery_slots[slot];
     bool have_level = slot_connected[slot] && slot_levels[slot] > 0;
-    /* Until a level arrives the placeholder (50% by default) is shown so that
-     * the bottom row always looks complete. */
+    /* 还没有收到电量时显示占位值（默认 50%），让底部一行看起来完整 */
     uint8_t level = have_level ? slot_levels[slot] : (uint8_t)YADS2_BATTERY_PLACEHOLDER_LEVEL;
 
-    /* Traffic light: level > 50% green, 11..50% amber, <= 10% or no data red */
+    /* 红绿灯：>50% 绿色，11..50% 琥珀色，<=10% 或无数据显示红色 */
     uint32_t state_color, track_color;
     if (level == 0 || level <= YADS2_LOW_BATTERY_THRESHOLD) {
         state_color = YADS2_COLOR_BATTERY_OFF;
@@ -304,7 +289,7 @@ static void yads2_render_battery_slot(int slot) {
     }
 
     if (w->label) {
-        /* Drop the '%' in narrow slots so the line cannot be clipped */
+        /* 窄槽位省略 '%'，避免文字被裁切 */
         bool with_pct = slot_widths[slot] >= YADS2_BATTERY_LABEL_NARROW_WIDTH;
 
         if (level > 0) {
@@ -335,7 +320,7 @@ static void yads2_render_battery_slot(int slot) {
     }
 }
 
-/* Store the latest level of one slot and refresh it */
+/* 保存某个槽位的最新电量并刷新显示 */
 static void yads2_set_battery_slot(int slot, uint8_t level, bool connected) {
     if (slot < 0 || slot >= YADS2_MAX_BATTERIES) {
         return;
@@ -346,12 +331,11 @@ static void yads2_set_battery_slot(int slot, uint8_t level, bool connected) {
     yads2_render_battery_slot(slot);
 }
 
-/* ========== BLE indicators (top corners) ========== */
+/* ========== BLE 指示（左上/右上角） ========== */
 
-/* Two indicators - left and right - shown as pure placeholders ("BLE 1" /
- * "BLE 2") until the caller supplies real profiles through
- * yads2_layout_set_ble(). The USB line of the upstream YADS screen is not shown:
- * this is a dongle, so USB always supplies the device. */
+/* 左右两个指示，在调用方通过 yads2_layout_set_ble() 给出真实 profile 之前
+ * 只是占位（"BLE 1" / "BLE 2"）。上游 YADS 的 USB 行不显示：本机是 dongle，
+ * USB 一定在供电。 */
 static void yads2_render_ble_slot(uint8_t slot) {
     if (slot >= 2 || ble_slot_labels[slot] == NULL) {
         return;
@@ -367,8 +351,8 @@ static void yads2_render_ble_slot(uint8_t slot) {
     lv_label_set_text_static(ble_slot_labels[slot], stbuf_ble_slots[slot]);
 }
 
-/* Update one BLE indicator: slot 0 = left (top-left corner), 1 = right
- * (top-right corner); profile 1..5 shows "BLE n", anything else "BLE -". */
+/* 更新一个 BLE 指示：slot 0 = 左（左上角），1 = 右（右上角）；
+ * profile 1..5 显示 "BLE n"，其它显示 "BLE -"。 */
 void yads2_layout_set_ble(uint8_t slot, uint8_t profile) {
     if (!layout_created || slot >= 2) {
         return;
@@ -378,12 +362,11 @@ void yads2_layout_set_ble(uint8_t slot, uint8_t profile) {
     yads2_render_ble_slot(slot);
 }
 
-/* ========== Hand (peripheral) connection status - top corners ========== */
+/* ========== 左右手连接状态（顶部两角） ========== */
 
-/* The keyboard publishes the left half as battery_level and the right half as
- * peripheral_battery[0]; ZMK reports level < 1 once a half disconnects, so a
- * valid level counts as "connected" (same rule as the upstream YADS battery
- * widget). The status sits in the corners, next to the BLE indicators. */
+/* 键盘把左半电量放在 battery_level、右半放在 peripheral_battery[0]；
+ * 某一半断开时 ZMK 会报 level < 1，所以"有有效电量"就算已连接
+ * （与上游 YADS 的电池控件同一规则）。状态显示在角上，紧挨 BLE 指示。 */
 static void yads2_update_peer_status(bool left_ok, bool right_ok) {
     const bool ok[2] = {left_ok, right_ok};
 
@@ -402,7 +385,7 @@ static void yads2_update_peer_status(bool left_ok, bool right_ok) {
     }
 }
 
-/* ========== Keyboard name / layer / modifiers ========== */
+/* ========== 键盘名 / 层 / 修饰键 ========== */
 
 static void yads2_update_name(const char *keyboard_name) {
     if (!name_label) {
@@ -419,10 +402,10 @@ static void yads2_update_name(const char *keyboard_name) {
     lv_label_set_text_static(name_label, stbuf_name);
 }
 
-/* ========== Layer list (names read from this firmware's keymap) ========== */
+/* ========== 层滚筒（层名来自本机 keymap） ========== */
 
-/* Full name of one keymap layer. Falls back to the layer number when the keymap
- * entry has no display-name (same rule as the upstream YADS layer widget). */
+/* 取某一层的完整名字；该层没有 display-name 时退化为层号
+ * （与上游 YADS 的 layer 控件同一规则）。 */
 static void yads2_layer_name(uint8_t index, char *out, size_t out_len) {
     const char *name = (index < layer_count) ? zmk_keymap_layer_name(index) : NULL;
 
@@ -433,10 +416,8 @@ static void yads2_layer_name(uint8_t index, char *out, size_t out_len) {
     }
 }
 
-/* Draw the layer roller. The rows are ordered around the current layer, which
- * therefore always sits in the middle row and stays vertically centred even at
- * the first/last layer (the missing neighbour row is simply hidden). All rows
- * use the same font; the current one is highlighted by colour. */
+/* 绘制层滚筒：三行以当前层为中心排列，因此当前层永远在中间行，第一层/最后一层
+ * 也保持垂直居中（缺的相邻行直接隐藏）。三行同一字号，当前层靠颜色高亮。 */
 static void yads2_render_layer_rows(void) {
     if (layer_count == 0 || layer_rows[0] == NULL) {
         return;
@@ -505,13 +486,11 @@ static void yads2_update_modifiers(uint8_t modifier_flags) {
     lv_label_set_text_static(mod_label, stbuf_mod);
 }
 
-/* ========== Create ========== */
+/* ========== 创建 ========== */
 
 static void yads2_create_top_row(lv_obj_t *parent) {
-    /* Left/right peripheral status (top corners). The position alone identifies
-     * the half: left corner = left hand, right corner = right hand. */
-    /* Hand status (outer corners) + BLE indicators (side by side, inward):
-     * left corner = "L ✓ BLE 1", right corner = "BLE 2 R ✓" */
+    /* 左右手状态放最外侧角上，BLE 指示在其内侧并排：
+     * 左角 = "L ✓ BLE 1"，右角 = "BLE 2 R ✓"（位置本身即代表左右手） */
     for (int slot = 0; slot < 2; slot++) {
         peer_labels[slot] = lv_label_create(parent);
         lv_obj_set_style_text_font(peer_labels[slot], &lv_font_montserrat_16, LV_PART_MAIN);
@@ -526,7 +505,8 @@ static void yads2_create_top_row(lv_obj_t *parent) {
         lv_label_set_text_static(peer_labels[slot], stbuf_peer[slot]);
 
         ble_slot_labels[slot] = lv_label_create(parent);
-        lv_obj_set_style_text_font(ble_slot_labels[slot], &lv_font_montserrat_16, LV_PART_MAIN);
+        lv_obj_set_style_text_font(ble_slot_labels[slot], &DINishCondensed_SemiBold_20,
+                                   LV_PART_MAIN);
         lv_obj_set_style_text_color(ble_slot_labels[slot], lv_color_hex(YADS2_COLOR_TEXT),
                                     LV_PART_MAIN);
         if (slot == 0) {
@@ -538,8 +518,7 @@ static void yads2_create_top_row(lv_obj_t *parent) {
         lv_label_set_text_static(ble_slot_labels[slot], stbuf_ble_slots[slot]);
     }
 
-    /* Keyboard name (top centre) - built-in font: the name is arbitrary text
-     * and the subset fonts do not cover all letters */
+    /* 键盘名（顶部中间）—— 用内置字体：名字是任意文本，子集字体覆盖不全 */
     name_label = lv_label_create(parent);
     lv_obj_set_style_text_font(name_label, &lv_font_montserrat_16, LV_PART_MAIN);
     lv_obj_set_style_text_color(name_label, lv_color_hex(YADS2_COLOR_DIM), LV_PART_MAIN);
@@ -551,8 +530,7 @@ static void yads2_create_top_row(lv_obj_t *parent) {
 }
 
 static void yads2_create_center(lv_obj_t *parent) {
-    /* Layer roller rows; all rows share one font (the current layer is only
-     * highlighted by colour, so the row spacing stays even) */
+    /* 层滚筒的三行；三行共用同一字体（当前层只靠颜色高亮，行距才能均匀） */
     for (int row = 0; row < YADS2_LAYER_ROW_COUNT; row++) {
         layer_rows[row] = lv_label_create(parent);
         lv_obj_set_style_text_font(layer_rows[row], &FR_Medium_32, LV_PART_MAIN);
@@ -566,7 +544,7 @@ static void yads2_create_center(lv_obj_t *parent) {
         lv_obj_add_flag(layer_rows[row], LV_OBJ_FLAG_HIDDEN);
     }
 
-    /* NerdFont modifier row underneath the layer list */
+    /* NerdFont 修饰键行，在层滚筒下方 */
     mod_label = lv_label_create(parent);
     lv_obj_set_style_text_font(mod_label, &NerdFonts_Regular_40, LV_PART_MAIN);
     lv_obj_set_style_text_color(mod_label, lv_color_hex(YADS2_COLOR_TEXT), LV_PART_MAIN);
@@ -574,7 +552,7 @@ static void yads2_create_center(lv_obj_t *parent) {
     lv_label_set_text_static(mod_label, "");
 }
 
-/* Battery bars along the bottom edge (one slot per keyboard/half) */
+/* 底部的电量条（每只键盘/手一条） */
 static void yads2_create_battery_row(lv_obj_t *parent) {
     lv_obj_t *row = lv_obj_create(parent);
     battery_row = row;
@@ -588,8 +566,8 @@ static void yads2_create_battery_row(lv_obj_t *parent) {
     for (int i = 0; i < YADS2_MAX_BATTERIES; i++) {
         struct yads2_battery_slot *slot = &battery_slots[i];
 
-        /* "<L|R> <level>%" line above the gauge - semibold font for the bold
-         * look, colour follows the battery state */
+        /* 进度条上方那行 "<L|R> <电量>%" —— 用 semibold 字体做粗体效果，
+         * 颜色跟随电池状态 */
         slot->label = lv_label_create(row);
         lv_obj_set_style_text_font(slot->label, &DINishCondensed_SemiBold_22, LV_PART_MAIN);
         lv_obj_set_style_text_color(slot->label, lv_color_hex(YADS2_COLOR_BATTERY_HIGH),
@@ -597,7 +575,7 @@ static void yads2_create_battery_row(lv_obj_t *parent) {
         lv_obj_set_style_text_align(slot->label, LV_TEXT_ALIGN_CENTER, LV_PART_MAIN);
         lv_label_set_text_static(slot->label, stbuf_battery[i]);
 
-        /* Gauge filled to the reported level (colour + gradient set on render) */
+        /* 按上报电量填充的进度条（颜色与渐变在 render 里设置） */
         slot->bar = lv_bar_create(row);
         lv_obj_set_size(slot->bar, YADS2_BATTERY_BAR_MAX_WIDTH, YADS2_BATTERY_BAR_HEIGHT);
         lv_bar_set_range(slot->bar, 0, 100);
@@ -616,11 +594,11 @@ static void yads2_create_battery_row(lv_obj_t *parent) {
         lv_obj_set_style_bg_grad_dir(slot->bar, LV_GRAD_DIR_HOR, LV_PART_INDICATOR);
     }
 
-    /* Preview the split layout (L + R) until real data arrives */
+    /* 还没有真实数据时先预览分体（L + R）两半的样子 */
     yads2_apply_battery_layout(YADS2_BATTERY_DEFAULT_SLOTS);
 }
 
-/* ========== Public API ========== */
+/* ========== 对外接口 ========== */
 
 lv_obj_t *yads2_layout_create(lv_obj_t *parent) {
     if (layout_created) {
@@ -633,7 +611,7 @@ lv_obj_t *yads2_layout_create(lv_obj_t *parent) {
 
     layout_container = parent;
 
-    /* Black screen, same as the upstream YADS status screen */
+    /* 黑底，与上游 YADS 界面一致 */
     lv_obj_set_style_bg_color(parent, lv_color_hex(0x000000), LV_PART_MAIN);
     lv_obj_set_style_bg_opa(parent, LV_OPA_COVER, LV_PART_MAIN);
 
@@ -641,16 +619,15 @@ lv_obj_t *yads2_layout_create(lv_obj_t *parent) {
     yads2_create_center(parent);
     yads2_create_battery_row(parent);
 
-    /* Force a full refresh on the first update */
+    /* 第一次 update 时强制全量刷新 */
     cached_valid = false;
 
-    /* Layer roller: the names come from this firmware's keymap; the first layer
-     * is highlighted until the current layer is supplied through
-     * yads2_layout_set_layer() */
+    /* 层滚筒：层名来自本机 keymap；在通过 yads2_layout_set_layer() 给出当前层之前，
+     * 先高亮第一层 */
     layer_count = (uint8_t)ZMK_KEYMAP_LAYERS_LEN;
     layer_current = 0;
 
-    /* BLE indicators: placeholders until the caller supplies profiles */
+    /* BLE 指示：调用方给出 profile 之前先用占位值 */
     ble_slot_profiles[0] = 1;
     ble_slot_profiles[1] = 2;
     yads2_render_ble_slot(0);
@@ -659,7 +636,7 @@ lv_obj_t *yads2_layout_create(lv_obj_t *parent) {
     layout_created = true;
     yads2_layout_set_layer(0);
 
-    /* Preview state for the hand status until the first update arrives */
+    /* 收到第一次 update 之前，手状态先用预览值 */
     yads2_update_peer_status(true, true);
 
     LOG_INF("YADS2 layout created (%u keymap layers)", (unsigned int)layer_count);
@@ -678,18 +655,17 @@ void yads2_layout_update(uint8_t active_layer, const char *layer_name,
         return;
     }
 
-    ARG_UNUSED(wpm);           /* WPM is intentionally not shown in this layout */
-    ARG_UNUSED(active_layer);  /* roller is driven by yads2_layout_set_layer() */
-    ARG_UNUSED(layer_name);    /* layer names come from this firmware's own keymap */
-    ARG_UNUSED(usb_connected); /* dongle: USB always supplies the device */
+    ARG_UNUSED(wpm);           /* 本布局不显示 WPM */
+    ARG_UNUSED(active_layer);  /* 层滚筒由 yads2_layout_set_layer() 驱动 */
+    ARG_UNUSED(layer_name);    /* 层名来自本机 keymap */
+    ARG_UNUSED(usb_connected); /* 本机是 dongle，USB 一定在供电 */
 
     const char *name = (keyboard_name != NULL) ? keyboard_name : "";
     bool have_keyboard = (name[0] != '\0');
 
-    /* Battery slots: slot 0 = keyboard, followed by every peripheral that
-     * advertises data. While no keyboard has been detected yet the split
-     * layout (L + R) is previewed with the placeholder level so the bottom row
-     * already shows what a connected keyboard will look like. */
+    /* 电量槽位：槽 0 = 键盘本体，其后是每个有上报数据的外设。
+     * 还没检测到键盘时先预览分体（L + R）布局并填占位电量，
+     * 这样底部一行已经是接上键盘后的样子。 */
     int count = YADS2_BATTERY_DEFAULT_SLOTS;
     if (have_keyboard) {
         count = 1;
@@ -705,28 +681,28 @@ void yads2_layout_update(uint8_t active_layer, const char *layer_name,
 
     if (count != battery_slot_count) {
         yads2_apply_battery_layout(count);
-        cached_valid = false; /* re-render texts/colors of the resized row */
+        cached_valid = false; /* 槽位数量变了，重新渲染整行的文字/颜色 */
     }
 
-    /* The battery row stays visible even before a keyboard is detected: slots
-     * without data show the placeholder level (50%) instead of an empty half. */
+    /* 检测到键盘之前电量行也保持显示：没有数据的槽位显示占位电量（50%），
+     * 而不是空着半边 */
 
-    /* Keyboard name */
+    /* 键盘名 */
     if (!cached_valid || strncmp(name, cached_keyboard_name, sizeof(cached_keyboard_name)) != 0) {
         yads2_update_name(name);
         snprintf(cached_keyboard_name, sizeof(cached_keyboard_name), "%s", name);
     }
 
-    /* Modifiers */
+    /* 修饰键 */
     if (!cached_valid || modifier_flags != cached_mods) {
         yads2_update_modifiers(modifier_flags);
         cached_mods = modifier_flags;
     }
 
-    /* BLE indicators are driven by yads2_layout_set_ble() (placeholders by
-     * default), so the advertisement's profile/flags are not used here. */
+    /* BLE 指示由 yads2_layout_set_ble() 驱动（默认占位），这里不使用广播里的
+     * profile/flags */
 
-    /* Batteries */
+    /* 电量 */
     bool battery_changed = !cached_valid || battery_level != cached_battery_level ||
                            battery_connected != cached_battery_connected;
     for (int i = 0; i < YADS2_MAX_PERIPHERALS; i++) {
@@ -747,12 +723,10 @@ void yads2_layout_update(uint8_t active_layer, const char *layer_name,
         cached_battery_connected = battery_connected;
     }
 
-    /* Hand connection status (corners): a half counts as connected when it
-     * reports a level; while nothing has been received yet (and the battery
-     * placeholder is active) both are treated as connected so that the layout
-     * looks complete. The BLE indicators are driven by
-     * yads2_layout_set_ble() and the roller by yads2_layout_set_layer(), so the
-     * advertisement's profile/flags are not used here. */
+    /* 两角的左右手连接状态：某半只要上报了电量就算已连接；还没收到任何数据时
+     * （且电量占位开启）两只手都按已连接显示，让界面看起来完整。
+     * BLE 指示由 yads2_layout_set_ble() 驱动、层滚筒由 yads2_layout_set_layer()
+     * 驱动，所以这里不使用广播里的 profile/flags。 */
     ARG_UNUSED(ble_connected);
     ARG_UNUSED(ble_bonded);
     ARG_UNUSED(ble_profile);
@@ -779,7 +753,7 @@ void yads2_layout_destroy(void) {
         return;
     }
 
-    /* Every widget lives directly on the screen / battery row */
+    /* 所有控件都直接挂在 screen / 电量行上 */
     lv_obj_t *objects[] = {battery_row,  ble_slot_labels[0], ble_slot_labels[1],
                            peer_labels[0], peer_labels[1],    name_label,
                            mod_label};
