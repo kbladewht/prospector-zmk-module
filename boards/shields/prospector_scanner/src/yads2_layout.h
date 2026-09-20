@@ -9,11 +9,9 @@
  * https://github.com/janpfischer/zmk-dongle-screen/tree/main/boards/shields/dongle_screen
  *
  * Widget arrangement (adapted to the 280x240 scanner panel):
- * - Left/right peripheral (hand) connection status in the top corners
- *   (left corner = left half, right corner = right half; green tick =
- *   connected, red cross = not connected)
+ * - Left/right BLE indicator in the top corners ("BLE 1" / "BLE 2" placeholders
+ *   by default, updated through yads2_layout_set_ble())
  * - Keyboard name (top centre)
- * - Output status (USB / BLE) right aligned below the right-hand status
  * - Layer roller (centre): exactly 3 entries with the current layer always in
  *   the middle row (its neighbours above/below), all drawn at the same size;
  *   the current one is highlighted in white, the neighbours dimmed. Rows
@@ -56,6 +54,18 @@ lv_obj_t *yads2_layout_create(lv_obj_t *parent);
  * @param index Layer index (clamped to the number of keymap layers)
  */
 void yads2_layout_set_layer(uint8_t index);
+
+/**
+ * @brief Update one BLE indicator in the top corners
+ *
+ * Two indicators are shown side by side: slot 0 in the left corner, slot 1 in
+ * the right corner. They start as placeholders ("BLE 1" / "BLE 2"); pass the
+ * real profile number (1..5) to show "BLE n", or 0/anything else for "BLE -".
+ *
+ * @param slot 0 = left indicator, 1 = right indicator
+ * @param profile BLE profile number (1..5) to display
+ */
+void yads2_layout_set_ble(uint8_t slot, uint8_t profile);
 
 void yads2_layout_update(uint8_t active_layer, const char *layer_name,
                          uint8_t battery_level, bool battery_connected,

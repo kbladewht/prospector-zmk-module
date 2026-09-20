@@ -46,18 +46,11 @@ LV_FONT_DECLARE(lv_font_montserrat_16);
 /* ========== Colors ==========
  * Palette follows the upstream YADS status screen
  * (janpfischer/zmk-dongle-screen): white text by default, colour only on the
- * output status and the battery widgets. */
+ * battery widgets. The upstream output widget is not used: this is a dongle, so
+ * USB always supplies it and the BLE indicators are placeholders driven by
+ * yads2_layout_set_ble(). */
 #define YADS2_COLOR_TEXT          0xFFFFFF
 #define YADS2_COLOR_DIM           0x7B7D93
-#define YADS2_COLOR_USB_READY     0xFFFFFF /* upstream: white when USB HID ready */
-#define YADS2_COLOR_USB_IDLE      0x7B7D93 /* upstream: 0xFF0000 (red when not ready).
-                                            * Dimmed here because on the scanner
-                                            * "not ready" is the normal state
-                                            * while the keyboard talks BLE. */
-#define YADS2_COLOR_BLE_CONNECTED 0x00FF00 /* upstream: 0x00FF00 */
-#define YADS2_COLOR_BLE_BONDED    0x4A90E2 /* upstream: 0x0000FF (softer blue kept
-                                            * for legibility on this panel) */
-#define YADS2_COLOR_BLE_OPEN      0xFFFFFF /* upstream: white (profile free) */
 #define YADS2_COLOR_BATTERY_OK    0xFFFFFF /* upstream: white */
 #define YADS2_COLOR_BATTERY_LOW   0xFFC000 /* upstream: LV_PALETTE_YELLOW */
 #define YADS2_COLOR_BATTERY_OFF   0xE63030 /* upstream: LV_PALETTE_RED */
@@ -69,17 +62,13 @@ LV_FONT_DECLARE(lv_font_montserrat_16);
 #define YADS2_LOW_BATTERY_THRESHOLD 10
 
 /* ========== Geometry (280x240 coordinate space) ========== */
-/* Top row: left peripheral status (left corner), keyboard name (centre),
- * right peripheral status (right corner) */
+/* Top row: left BLE indicator (left corner), keyboard name (centre),
+ * right BLE indicator (right corner) */
 #define YADS2_NAME_Y 8
 #define YADS2_NAME_WIDTH 120
-#define YADS2_PEER_LEFT_X 10
-#define YADS2_PEER_RIGHT_X_OFFSET (-10)
-#define YADS2_PEER_STATUS_Y 6
-/* Output status (USB / BLE) - right aligned below the right-hand status */
-#define YADS2_OUTPUT_X_OFFSET (-10)
-#define YADS2_OUTPUT_USB_Y 34
-#define YADS2_OUTPUT_BLE_Y 54
+#define YADS2_BLE_LEFT_X 10
+#define YADS2_BLE_RIGHT_X_OFFSET (-10)
+#define YADS2_BLE_Y 6
 
 /* Centre: layer "roller" - exactly 3 entries with the current layer always in
  * the middle row (its neighbours above and below), all drawn with the same
@@ -136,9 +125,7 @@ static const char *mod_symbols[4] = {
  * advertisement, which fragments the LVGL pool over hours of operation. */
 static char stbuf_layer_rows[YADS2_LAYER_ROW_COUNT][24] = {{""}, {""}, {""}};
 static char stbuf_name[24] = "Receiver...";
-static char stbuf_peer[2][8] = {{""}, {""}};
-static char stbuf_usb[24] = "";
-static char stbuf_ble[24] = "";
+static char stbuf_ble_slots[2][12] = {{"BLE 1"}, {"BLE 2"}};
 static char stbuf_mod[64] = "";
 static char stbuf_battery[YADS2_MAX_BATTERIES][12] = {{"--"}, {"--"}, {"--"}, {"--"}};
 
@@ -149,11 +136,8 @@ struct yads2_battery_slot {
 };
 
 static lv_obj_t *layout_container = NULL;
-static lv_obj_t *peer_left_label = NULL;
-static lv_obj_t *peer_right_label = NULL;
+static lv_obj_t *ble_slot_labels[2] = {NULL, NULL};
 static lv_obj_t *name_label = NULL;
-static lv_obj_t *usb_label = NULL;
-static lv_obj_t *ble_label = NULL;
 static lv_obj_t *layer_rows[YADS2_LAYER_ROW_COUNT] = {NULL};
 static lv_obj_t *mod_label = NULL;
 static lv_obj_t *battery_row = NULL;
@@ -172,14 +156,13 @@ static int battery_slot_count = 0;
 static uint8_t layer_count = 0;   /* number of layers in the keymap */
 static uint8_t layer_current = 0; /* highlighted layer */
 
+/* BLE indicators in the top corners: 1..5 = profile number, anything else
+ * shows "BLE -". Placeholders by default (BLE 1 / BLE 2). */
+static uint8_t ble_slot_profiles[2] = {1, 2};
+
 /* Cached values - updates only touch LVGL when something actually changed */
 static bool cached_valid = false;
-static bool cached_peer[2] = {false, false};
 static uint8_t cached_mods = 0;
-static bool cached_usb_connected = false;
-static bool cached_ble_connected = false;
-static bool cached_ble_bonded = false;
-static uint8_t cached_ble_profile = 0;
 static char cached_keyboard_name[24] = "";
 static uint8_t cached_battery_level = 0;
 static bool cached_battery_connected = false;
@@ -342,56 +325,39 @@ static void yads2_set_battery_slot(int slot, uint8_t level, bool connected) {
     yads2_render_battery_slot(slot);
 }
 
-/* ========== Output status (top right) ========== */
+/* ========== BLE indicators (top corners) ========== */
 
-static void yads2_update_output(bool usb_connected, bool ble_connected, bool ble_bonded,
-                                uint8_t ble_profile) {
-    if (!usb_label || !ble_label) {
+/* Two indicators - left and right - shown as pure placeholders ("BLE 1" /
+ * "BLE 2") until the caller supplies real profiles through
+ * yads2_layout_set_ble(). The USB line of the upstream YADS screen is not shown:
+ * this is a dongle, so USB always supplies the device. */
+static void yads2_render_ble_slot(uint8_t slot) {
+    if (slot >= 2 || ble_slot_labels[slot] == NULL) {
         return;
     }
 
-    uint32_t usb_color = usb_connected ? YADS2_COLOR_USB_READY : YADS2_COLOR_USB_IDLE;
-    uint32_t ble_color = ble_connected ? YADS2_COLOR_BLE_CONNECTED
-                         : ble_bonded  ? YADS2_COLOR_BLE_BONDED
-                                       : YADS2_COLOR_BLE_OPEN;
-
-    /* The arrow marks the transport the keyboard is currently using: USB wins
-     * when its HID endpoint is ready, otherwise the keyboard talks BLE. */
-    snprintf(stbuf_usb, sizeof(stbuf_usb), "%s #%06x USB#", usb_connected ? ">" : " ",
-             (unsigned int)usb_color);
-    snprintf(stbuf_ble, sizeof(stbuf_ble), "%s #%06x BLE %u#", usb_connected ? " " : ">",
-             (unsigned int)ble_color, (unsigned int)(ble_profile + 1));
-
-    lv_label_set_text_static(usb_label, stbuf_usb);
-    lv_label_set_text_static(ble_label, stbuf_ble);
-}
-
-/* ========== Peripheral (hand) status / keyboard name / layer / modifiers ========== */
-
-/* Left/right peripheral (hand) connection status shown in the top corners.
- * The keyboard publishes the left half as battery_level and the right half as
- * peripheral_battery[0]; ZMK reports level < 1 once a half disconnects, so a
- * valid level counts as "connected" (same rule as the upstream YADS battery
- * widget). */
-static void yads2_update_peer_status(bool left_ok, bool right_ok) {
-    lv_obj_t *labels[2] = {peer_left_label, peer_right_label};
-    const bool ok[2] = {left_ok, right_ok};
-    const char *prefix[2] = {"L ", "R "};
-
-    for (int i = 0; i < 2; i++) {
-        if (!labels[i]) {
-            continue;
-        }
-
-        snprintf(stbuf_peer[i], sizeof(stbuf_peer[i]), "%s%s", prefix[i],
-                 ok[i] ? LV_SYMBOL_OK : LV_SYMBOL_CLOSE);
-        lv_label_set_text_static(labels[i], stbuf_peer[i]);
-        lv_obj_set_style_text_color(labels[i],
-                                    lv_color_hex(ok[i] ? YADS2_COLOR_BLE_CONNECTED
-                                                       : YADS2_COLOR_BATTERY_OFF),
-                                    LV_PART_MAIN);
+    if (ble_slot_profiles[slot] >= 1 && ble_slot_profiles[slot] <= 5) {
+        snprintf(stbuf_ble_slots[slot], sizeof(stbuf_ble_slots[slot]), "BLE %u",
+                 (unsigned int)ble_slot_profiles[slot]);
+    } else {
+        snprintf(stbuf_ble_slots[slot], sizeof(stbuf_ble_slots[slot]), "BLE -");
     }
+
+    lv_label_set_text_static(ble_slot_labels[slot], stbuf_ble_slots[slot]);
 }
+
+/* Update one BLE indicator: slot 0 = left (top-left corner), 1 = right
+ * (top-right corner); profile 1..5 shows "BLE n", anything else "BLE -". */
+void yads2_layout_set_ble(uint8_t slot, uint8_t profile) {
+    if (!layout_created || slot >= 2) {
+        return;
+    }
+
+    ble_slot_profiles[slot] = profile;
+    yads2_render_ble_slot(slot);
+}
+
+/* ========== Keyboard name / layer / modifiers ========== */
 
 static void yads2_update_name(const char *keyboard_name) {
     if (!name_label) {
@@ -499,20 +465,21 @@ static void yads2_update_modifiers(uint8_t modifier_flags) {
 static void yads2_create_top_row(lv_obj_t *parent) {
     /* Left/right peripheral status (top corners). The position alone identifies
      * the half: left corner = left hand, right corner = right hand. */
-    peer_left_label = lv_label_create(parent);
-    lv_obj_set_style_text_font(peer_left_label, &lv_font_montserrat_16, LV_PART_MAIN);
-    lv_obj_set_style_text_color(peer_left_label, lv_color_hex(YADS2_COLOR_BATTERY_OFF),
-                                LV_PART_MAIN);
-    lv_obj_set_pos(peer_left_label, YADS2_PEER_LEFT_X, YADS2_PEER_STATUS_Y);
-    lv_label_set_text_static(peer_left_label, "L " LV_SYMBOL_CLOSE);
-
-    peer_right_label = lv_label_create(parent);
-    lv_obj_set_style_text_font(peer_right_label, &lv_font_montserrat_16, LV_PART_MAIN);
-    lv_obj_set_style_text_color(peer_right_label, lv_color_hex(YADS2_COLOR_BATTERY_OFF),
-                                LV_PART_MAIN);
-    lv_obj_align(peer_right_label, LV_ALIGN_TOP_RIGHT, YADS2_PEER_RIGHT_X_OFFSET,
-                 YADS2_PEER_STATUS_Y);
-    lv_label_set_text_static(peer_right_label, "R " LV_SYMBOL_CLOSE);
+    /* BLE indicators (top corners) - placeholders by default, update through
+     * yads2_layout_set_ble() */
+    for (int slot = 0; slot < 2; slot++) {
+        ble_slot_labels[slot] = lv_label_create(parent);
+        lv_obj_set_style_text_font(ble_slot_labels[slot], &lv_font_montserrat_16, LV_PART_MAIN);
+        lv_obj_set_style_text_color(ble_slot_labels[slot], lv_color_hex(YADS2_COLOR_TEXT),
+                                    LV_PART_MAIN);
+        if (slot == 0) {
+            lv_obj_set_pos(ble_slot_labels[slot], YADS2_BLE_LEFT_X, YADS2_BLE_Y);
+        } else {
+            lv_obj_align(ble_slot_labels[slot], LV_ALIGN_TOP_RIGHT, YADS2_BLE_RIGHT_X_OFFSET,
+                         YADS2_BLE_Y);
+        }
+        lv_label_set_text_static(ble_slot_labels[slot], stbuf_ble_slots[slot]);
+    }
 
     /* Keyboard name (top centre) - built-in font: the name is arbitrary text
      * and the subset fonts do not cover all letters */
@@ -524,22 +491,6 @@ static void yads2_create_top_row(lv_obj_t *parent) {
     lv_obj_set_width(name_label, YADS2_NAME_WIDTH);
     lv_obj_align(name_label, LV_ALIGN_TOP_MID, 0, YADS2_NAME_Y);
     lv_label_set_text_static(name_label, stbuf_name);
-
-    /* Output status (below the right-hand status) - "> USB" / "> BLE n",
-     * recolored per transport */
-    usb_label = lv_label_create(parent);
-    lv_obj_set_style_text_font(usb_label, &lv_font_montserrat_16, LV_PART_MAIN);
-    lv_obj_set_style_text_align(usb_label, LV_TEXT_ALIGN_RIGHT, LV_PART_MAIN);
-    lv_label_set_recolor(usb_label, true);
-    lv_obj_align(usb_label, LV_ALIGN_TOP_RIGHT, YADS2_OUTPUT_X_OFFSET, YADS2_OUTPUT_USB_Y);
-    lv_label_set_text_static(usb_label, " ");
-
-    ble_label = lv_label_create(parent);
-    lv_obj_set_style_text_font(ble_label, &lv_font_montserrat_16, LV_PART_MAIN);
-    lv_obj_set_style_text_align(ble_label, LV_TEXT_ALIGN_RIGHT, LV_PART_MAIN);
-    lv_label_set_recolor(ble_label, true);
-    lv_obj_align(ble_label, LV_ALIGN_TOP_RIGHT, YADS2_OUTPUT_X_OFFSET, YADS2_OUTPUT_BLE_Y);
-    lv_label_set_text_static(ble_label, "BLE");
 }
 
 static void yads2_create_center(lv_obj_t *parent) {
@@ -636,6 +587,12 @@ lv_obj_t *yads2_layout_create(lv_obj_t *parent) {
     layer_count = (uint8_t)ZMK_KEYMAP_LAYERS_LEN;
     layer_current = 0;
 
+    /* BLE indicators: placeholders until the caller supplies profiles */
+    ble_slot_profiles[0] = 1;
+    ble_slot_profiles[1] = 2;
+    yads2_render_ble_slot(0);
+    yads2_render_ble_slot(1);
+
     layout_created = true;
     yads2_layout_set_layer(0);
 
@@ -655,9 +612,10 @@ void yads2_layout_update(uint8_t active_layer, const char *layer_name,
         return;
     }
 
-    ARG_UNUSED(wpm);          /* WPM is intentionally not shown in this layout */
-    ARG_UNUSED(active_layer); /* layer list is driven by yads2_layout_set_layer() */
-    ARG_UNUSED(layer_name);   /* layer names come from this firmware's own keymap */
+    ARG_UNUSED(wpm);           /* WPM is intentionally not shown in this layout */
+    ARG_UNUSED(active_layer);  /* roller is driven by yads2_layout_set_layer() */
+    ARG_UNUSED(layer_name);    /* layer names come from this firmware's own keymap */
+    ARG_UNUSED(usb_connected); /* dongle: USB always supplies the device */
 
     const char *name = (keyboard_name != NULL) ? keyboard_name : "";
     bool have_keyboard = (name[0] != '\0');
@@ -699,16 +657,8 @@ void yads2_layout_update(uint8_t active_layer, const char *layer_name,
         cached_mods = modifier_flags;
     }
 
-    /* Output status */
-    if (!cached_valid || usb_connected != cached_usb_connected ||
-        ble_connected != cached_ble_connected || ble_bonded != cached_ble_bonded ||
-        ble_profile != cached_ble_profile) {
-        yads2_update_output(usb_connected, ble_connected, ble_bonded, ble_profile);
-        cached_usb_connected = usb_connected;
-        cached_ble_connected = ble_connected;
-        cached_ble_bonded = ble_bonded;
-        cached_ble_profile = ble_profile;
-    }
+    /* BLE indicators are driven by yads2_layout_set_ble() (placeholders by
+     * default), so the advertisement's profile/flags are not used here. */
 
     /* Batteries */
     bool battery_changed = !cached_valid || battery_level != cached_battery_level ||
@@ -731,23 +681,12 @@ void yads2_layout_update(uint8_t active_layer, const char *layer_name,
         cached_battery_connected = battery_connected;
     }
 
-    /* Peripheral (hand) connection status for the two top corners. A half counts
-     * as connected when it reports a level; while nothing has been received yet
-     * (and the battery placeholder is active) the preview state is shown so the
-     * layout looks complete. */
-    bool peer_ok[2];
-    peer_ok[0] = slot_connected[0] && slot_levels[0] > 0;
-    peer_ok[1] = slot_connected[1] && slot_levels[1] > 0;
-    if (!have_keyboard && (YADS2_BATTERY_PLACEHOLDER_LEVEL > 0)) {
-        peer_ok[0] = true;
-        peer_ok[1] = true;
-    }
-
-    if (!cached_valid || peer_ok[0] != cached_peer[0] || peer_ok[1] != cached_peer[1]) {
-        yads2_update_peer_status(peer_ok[0], peer_ok[1]);
-        cached_peer[0] = peer_ok[0];
-        cached_peer[1] = peer_ok[1];
-    }
+    /* BLE indicators (top corners) and the layer roller are driven by the
+     * setters (yads2_layout_set_ble()/set_layer()), so the advertisement's
+     * layer/profile fields are not used here. */
+    ARG_UNUSED(ble_connected);
+    ARG_UNUSED(ble_bonded);
+    ARG_UNUSED(ble_profile);
 
     cached_valid = true;
 }
@@ -758,8 +697,8 @@ void yads2_layout_destroy(void) {
     }
 
     /* Every widget lives directly on the screen / battery row */
-    lv_obj_t *objects[] = {battery_row, peer_left_label, peer_right_label, name_label,
-                           usb_label,   ble_label,       mod_label};
+    lv_obj_t *objects[] = {battery_row, ble_slot_labels[0], ble_slot_labels[1], name_label,
+                           mod_label};
     for (size_t i = 0; i < sizeof(objects) / sizeof(objects[0]); i++) {
         if (objects[i]) {
             lv_obj_del(objects[i]);
@@ -774,16 +713,13 @@ void yads2_layout_destroy(void) {
     }
 
     battery_row = NULL;
-    peer_left_label = NULL;
-    peer_right_label = NULL;
+    ble_slot_labels[0] = NULL;
+    ble_slot_labels[1] = NULL;
     name_label = NULL;
-    usb_label = NULL;
-    ble_label = NULL;
     mod_label = NULL;
     memset(battery_slots, 0, sizeof(battery_slots));
     memset(slot_levels, 0, sizeof(slot_levels));
     memset(slot_connected, 0, sizeof(slot_connected));
-    memset(cached_peer, 0, sizeof(cached_peer));
     for (int i = 0; i < YADS2_MAX_BATTERIES; i++) {
         slot_names[i][0] = '\0';
         snprintf(stbuf_battery[i], sizeof(stbuf_battery[i]), "--");
@@ -796,6 +732,8 @@ void yads2_layout_destroy(void) {
     cached_keyboard_name[0] = '\0';
     layer_count = 0;
     layer_current = 0;
+    ble_slot_profiles[0] = 1;
+    ble_slot_profiles[1] = 2;
 
     LOG_INF("YADS2 layout destroyed");
 }
