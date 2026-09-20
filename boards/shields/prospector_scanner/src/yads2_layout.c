@@ -51,6 +51,7 @@ LV_FONT_DECLARE(lv_font_montserrat_16);
  * yads2_layout_set_ble(). */
 #define YADS2_COLOR_TEXT          0xFFFFFF
 #define YADS2_COLOR_DIM           0x7B7D93
+#define YADS2_COLOR_PEER_OK       0x00FF00 /* hand connected (upstream: 0x00FF00) */
 #define YADS2_COLOR_BATTERY_OK    0xFFFFFF /* upstream: white */
 #define YADS2_COLOR_BATTERY_LOW   0xFFC000 /* upstream: LV_PALETTE_YELLOW */
 #define YADS2_COLOR_BATTERY_OFF   0xE63030 /* upstream: LV_PALETTE_RED */
@@ -62,13 +63,15 @@ LV_FONT_DECLARE(lv_font_montserrat_16);
 #define YADS2_LOW_BATTERY_THRESHOLD 10
 
 /* ========== Geometry (280x240 coordinate space) ========== */
-/* Top row: left BLE indicator (left corner), keyboard name (centre),
- * right BLE indicator (right corner) */
+/* Top row: left-hand status + BLE 1 (left corner), keyboard name (centre),
+ * BLE 2 + right-hand status (right corner) */
 #define YADS2_NAME_Y 8
-#define YADS2_NAME_WIDTH 120
-#define YADS2_BLE_LEFT_X 10
-#define YADS2_BLE_RIGHT_X_OFFSET (-10)
-#define YADS2_BLE_Y 6
+#define YADS2_NAME_WIDTH 104
+#define YADS2_PEER_LEFT_X 10
+#define YADS2_PEER_RIGHT_X_OFFSET (-10)
+#define YADS2_BLE_LEFT_X 48
+#define YADS2_BLE_RIGHT_X_OFFSET (-50)
+#define YADS2_TOP_Y 6
 
 /* Centre: layer "roller" - exactly 3 entries with the current layer always in
  * the middle row (its neighbours above and below), all drawn with the same
@@ -125,6 +128,7 @@ static const char *mod_symbols[4] = {
  * advertisement, which fragments the LVGL pool over hours of operation. */
 static char stbuf_layer_rows[YADS2_LAYER_ROW_COUNT][24] = {{""}, {""}, {""}};
 static char stbuf_name[24] = "Receiver...";
+static char stbuf_peer[2][8] = {{"L "}, {"R "}};
 static char stbuf_ble_slots[2][12] = {{"BLE 1"}, {"BLE 2"}};
 static char stbuf_mod[64] = "";
 static char stbuf_battery[YADS2_MAX_BATTERIES][12] = {{"--"}, {"--"}, {"--"}, {"--"}};
@@ -137,6 +141,7 @@ struct yads2_battery_slot {
 
 static lv_obj_t *layout_container = NULL;
 static lv_obj_t *ble_slot_labels[2] = {NULL, NULL};
+static lv_obj_t *peer_labels[2] = {NULL, NULL};
 static lv_obj_t *name_label = NULL;
 static lv_obj_t *layer_rows[YADS2_LAYER_ROW_COUNT] = {NULL};
 static lv_obj_t *mod_label = NULL;
@@ -162,6 +167,7 @@ static uint8_t ble_slot_profiles[2] = {1, 2};
 
 /* Cached values - updates only touch LVGL when something actually changed */
 static bool cached_valid = false;
+static bool cached_peer[2] = {false, false};
 static uint8_t cached_mods = 0;
 static char cached_keyboard_name[24] = "";
 static uint8_t cached_battery_level = 0;
@@ -357,6 +363,30 @@ void yads2_layout_set_ble(uint8_t slot, uint8_t profile) {
     yads2_render_ble_slot(slot);
 }
 
+/* ========== Hand (peripheral) connection status - top corners ========== */
+
+/* The keyboard publishes the left half as battery_level and the right half as
+ * peripheral_battery[0]; ZMK reports level < 1 once a half disconnects, so a
+ * valid level counts as "connected" (same rule as the upstream YADS battery
+ * widget). The status sits in the corners, next to the BLE indicators. */
+static void yads2_update_peer_status(bool left_ok, bool right_ok) {
+    const bool ok[2] = {left_ok, right_ok};
+
+    for (int i = 0; i < 2; i++) {
+        if (peer_labels[i] == NULL) {
+            continue;
+        }
+
+        snprintf(stbuf_peer[i], sizeof(stbuf_peer[i]), "%s%s", (i == 0) ? "L " : "R ",
+                 ok[i] ? LV_SYMBOL_OK : LV_SYMBOL_CLOSE);
+        lv_label_set_text_static(peer_labels[i], stbuf_peer[i]);
+        lv_obj_set_style_text_color(peer_labels[i],
+                                    lv_color_hex(ok[i] ? YADS2_COLOR_PEER_OK
+                                                       : YADS2_COLOR_BATTERY_OFF),
+                                    LV_PART_MAIN);
+    }
+}
+
 /* ========== Keyboard name / layer / modifiers ========== */
 
 static void yads2_update_name(const char *keyboard_name) {
@@ -465,18 +495,30 @@ static void yads2_update_modifiers(uint8_t modifier_flags) {
 static void yads2_create_top_row(lv_obj_t *parent) {
     /* Left/right peripheral status (top corners). The position alone identifies
      * the half: left corner = left hand, right corner = right hand. */
-    /* BLE indicators (top corners) - placeholders by default, update through
-     * yads2_layout_set_ble() */
+    /* Hand status (outer corners) + BLE indicators (side by side, inward):
+     * left corner = "L ✓ BLE 1", right corner = "BLE 2 R ✓" */
     for (int slot = 0; slot < 2; slot++) {
+        peer_labels[slot] = lv_label_create(parent);
+        lv_obj_set_style_text_font(peer_labels[slot], &lv_font_montserrat_16, LV_PART_MAIN);
+        lv_obj_set_style_text_color(peer_labels[slot], lv_color_hex(YADS2_COLOR_BATTERY_OFF),
+                                    LV_PART_MAIN);
+        if (slot == 0) {
+            lv_obj_set_pos(peer_labels[slot], YADS2_PEER_LEFT_X, YADS2_TOP_Y);
+        } else {
+            lv_obj_align(peer_labels[slot], LV_ALIGN_TOP_RIGHT, YADS2_PEER_RIGHT_X_OFFSET,
+                         YADS2_TOP_Y);
+        }
+        lv_label_set_text_static(peer_labels[slot], stbuf_peer[slot]);
+
         ble_slot_labels[slot] = lv_label_create(parent);
         lv_obj_set_style_text_font(ble_slot_labels[slot], &lv_font_montserrat_16, LV_PART_MAIN);
         lv_obj_set_style_text_color(ble_slot_labels[slot], lv_color_hex(YADS2_COLOR_TEXT),
                                     LV_PART_MAIN);
         if (slot == 0) {
-            lv_obj_set_pos(ble_slot_labels[slot], YADS2_BLE_LEFT_X, YADS2_BLE_Y);
+            lv_obj_set_pos(ble_slot_labels[slot], YADS2_BLE_LEFT_X, YADS2_TOP_Y);
         } else {
             lv_obj_align(ble_slot_labels[slot], LV_ALIGN_TOP_RIGHT, YADS2_BLE_RIGHT_X_OFFSET,
-                         YADS2_BLE_Y);
+                         YADS2_TOP_Y);
         }
         lv_label_set_text_static(ble_slot_labels[slot], stbuf_ble_slots[slot]);
     }
@@ -596,6 +638,9 @@ lv_obj_t *yads2_layout_create(lv_obj_t *parent) {
     layout_created = true;
     yads2_layout_set_layer(0);
 
+    /* Preview state for the hand status until the first update arrives */
+    yads2_update_peer_status(true, true);
+
     LOG_INF("YADS2 layout created (%u keymap layers)", (unsigned int)layer_count);
     return parent;
 }
@@ -681,12 +726,29 @@ void yads2_layout_update(uint8_t active_layer, const char *layer_name,
         cached_battery_connected = battery_connected;
     }
 
-    /* BLE indicators (top corners) and the layer roller are driven by the
-     * setters (yads2_layout_set_ble()/set_layer()), so the advertisement's
-     * layer/profile fields are not used here. */
+    /* Hand connection status (corners): a half counts as connected when it
+     * reports a level; while nothing has been received yet (and the battery
+     * placeholder is active) both are treated as connected so that the layout
+     * looks complete. The BLE indicators are driven by
+     * yads2_layout_set_ble() and the roller by yads2_layout_set_layer(), so the
+     * advertisement's profile/flags are not used here. */
     ARG_UNUSED(ble_connected);
     ARG_UNUSED(ble_bonded);
     ARG_UNUSED(ble_profile);
+
+    bool peer_ok[2];
+    peer_ok[0] = slot_connected[0] && slot_levels[0] > 0;
+    peer_ok[1] = slot_connected[1] && slot_levels[1] > 0;
+    if (!have_keyboard && (YADS2_BATTERY_PLACEHOLDER_LEVEL > 0)) {
+        peer_ok[0] = true;
+        peer_ok[1] = true;
+    }
+
+    if (!cached_valid || peer_ok[0] != cached_peer[0] || peer_ok[1] != cached_peer[1]) {
+        yads2_update_peer_status(peer_ok[0], peer_ok[1]);
+        cached_peer[0] = peer_ok[0];
+        cached_peer[1] = peer_ok[1];
+    }
 
     cached_valid = true;
 }
@@ -697,7 +759,8 @@ void yads2_layout_destroy(void) {
     }
 
     /* Every widget lives directly on the screen / battery row */
-    lv_obj_t *objects[] = {battery_row, ble_slot_labels[0], ble_slot_labels[1], name_label,
+    lv_obj_t *objects[] = {battery_row,  ble_slot_labels[0], ble_slot_labels[1],
+                           peer_labels[0], peer_labels[1],    name_label,
                            mod_label};
     for (size_t i = 0; i < sizeof(objects) / sizeof(objects[0]); i++) {
         if (objects[i]) {
@@ -715,11 +778,14 @@ void yads2_layout_destroy(void) {
     battery_row = NULL;
     ble_slot_labels[0] = NULL;
     ble_slot_labels[1] = NULL;
+    peer_labels[0] = NULL;
+    peer_labels[1] = NULL;
     name_label = NULL;
     mod_label = NULL;
     memset(battery_slots, 0, sizeof(battery_slots));
     memset(slot_levels, 0, sizeof(slot_levels));
     memset(slot_connected, 0, sizeof(slot_connected));
+    memset(cached_peer, 0, sizeof(cached_peer));
     for (int i = 0; i < YADS2_MAX_BATTERIES; i++) {
         slot_names[i][0] = '\0';
         snprintf(stbuf_battery[i], sizeof(stbuf_battery[i]), "--");

@@ -9,8 +9,10 @@
  * https://github.com/janpfischer/zmk-dongle-screen/tree/main/boards/shields/dongle_screen
  *
  * Widget arrangement (adapted to the 280x240 scanner panel):
- * - Left/right BLE indicator in the top corners ("BLE 1" / "BLE 2" placeholders
- *   by default, updated through yads2_layout_set_ble())
+ * - Top corners: hand connection status (left/right half) with the BLE indicator
+ *   beside it - "L ✓ BLE 1" on the left, "BLE 2 R ✓" on the right. The BLE
+ *   values are placeholders ("BLE 1" / "BLE 2") until updated through
+ *   yads2_layout_set_ble(); the hand status follows the keyboard's halves.
  * - Keyboard name (top centre)
  * - Layer roller (centre): exactly 3 entries with the current layer always in
  *   the middle row (its neighbours above/below), all drawn at the same size;
