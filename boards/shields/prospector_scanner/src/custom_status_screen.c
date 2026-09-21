@@ -40,12 +40,12 @@
 
 LOG_MODULE_REGISTER(display_screen, LOG_LEVEL_INF);
 
-/* ========== Pending Display Data from scanner_core.c ========== */
-/* Work queue sets data + flag, LVGL timer here processes it on the display
- * thread. struct pending_display_data + getter declarations come from
- * zmk/scanner_core.h - NEVER redefine them locally (a drifted local copy once
- * caused an 8-byte stack overwrite in scanner_get_pending_update). */
+/* ========== 待显示数据（原 scanner_core.c，现由本机数据源提供） ========== */
+/* struct pending_display_data 仍在 zmk/scanner_core.h 定义，禁止在本地重复定义
+ * （历史上本地副本漂移过一次，导致 scanner_get_pending_update 里多拷贝 8 字节
+ *  覆盖了调用方的栈变量）。实现见 s7789_update.c（接口已改名为 ble_*）。 */
 #include <zmk/scanner_core.h>
+#include "s7789_update.h"
 
 /* LVGL timer for processing pending updates in main thread */
 static lv_timer_t *pending_update_timer = NULL;
@@ -530,9 +530,9 @@ static void pending_update_timer_cb(lv_timer_t *timer) {
         return;
     }
 
-    /* Check for pending display update */
+    /* 检查是否有待显示的更新（本机数据源） */
     struct pending_display_data data;
-    if (scanner_get_pending_update(&data)) {
+    if (ble_get_pending_update(&data)) {
         /* Check if all keyboards have timed out */
         if (data.no_keyboards) {
             LOG_INF("All keyboards timed out - returning to Scanning... state");
@@ -614,11 +614,11 @@ static void pending_update_timer_cb(lv_timer_t *timer) {
         }
     }
 
-    /* Check for pending signal update (separate from main data, updates at 1Hz) */
-    /* Read globals directly and update display inline (avoid ALL float function params) */
-    if (scanner_is_signal_pending()) {
-        int8_t sig_rssi = scanner_signal_rssi;
-        int32_t sig_rate_x100 = scanner_signal_rate_x100;
+    /* 信号栏更新（信号与主数据分开，1Hz） */
+    /* 直接读全局量并在本函数内更新显示（避免任何带 float 参数的调用） */
+    if (ble_is_signal_pending()) {
+        int8_t sig_rssi = ble_signal_rssi;
+        int32_t sig_rate_x100 = ble_signal_rate_x100;
 
         /* Update signal display INLINE (no function call with float param) */
         rssi = sig_rssi;
@@ -646,9 +646,9 @@ static void pending_update_timer_cb(lv_timer_t *timer) {
         }
     }
 
-    /* Check for pending scanner battery update */
+    /* 检查本机自身电量是否有更新 */
     int scanner_bat;
-    if (scanner_get_pending_battery(&scanner_bat)) {
+    if (ble_get_pending_battery(&scanner_bat)) {
         display_update_scanner_battery(scanner_bat);
     }
 }
@@ -2708,7 +2708,7 @@ static void create_system_settings_widgets(void) {
         uint8_t kb_maj, kb_min, kb_pat;
         bool kb_dev;
         char kb_name[MAX_NAME_LEN];
-        if (scanner_get_kb_version(&kb_maj, &kb_min, &kb_pat, &kb_dev, kb_name, sizeof(kb_name))) {
+        if (ble_get_kb_version(&kb_maj, &kb_min, &kb_pat, &kb_dev, kb_name, sizeof(kb_name))) {
             if (kb_maj == 0) {
                 /* Legacy protocol (version=0x01): major decodes as 0, which never existed */
                 snprintf(kb_ver_buf, sizeof(kb_ver_buf), "KB: %s (< v2.2)", kb_name);
@@ -2783,9 +2783,7 @@ static void create_system_settings_widgets(void) {
 
 /* ========== Keyboard Select Screen Functions ========== */
 
-/* External functions from scanner_core.c */
-extern int scanner_get_selected_keyboard(void);
-extern int scanner_set_selected_keyboard(int index);
+/* 选中的键盘槽位（本机数据源，声明见 s7789_update.h） */
 
 /* RSSI helper functions (same as original keyboard_list_widget.c) */
 static uint8_t ks_rssi_to_bars(int8_t rssi) {
@@ -2816,8 +2814,8 @@ static void ks_entry_click_cb(lv_event_t *e) {
 
     ks_selected_keyboard = keyboard_index;
 
-    /* Update scanner_core.c to display this keyboard on main screen */
-    if (scanner_set_selected_keyboard(keyboard_index) != 0) {
+    /* 通知数据源把选中的键盘显示到主界面 */
+    if (ble_set_selected_keyboard(keyboard_index) != 0) {
         /* Core was busy: keep UI and core consistent by not pretending
          * the selection changed. The user simply taps again. */
         LOG_WRN("Keyboard %d selection not applied (core busy) - tap again", keyboard_index);
@@ -3181,7 +3179,7 @@ static void ks_update_entries(void) {
 
     struct zmk_keyboard_status kbd;
     for (int i = 0; i < CONFIG_PROSPECTOR_MAX_KEYBOARDS && active_count < KS_MAX_KEYBOARDS; i++) {
-        if (!zmk_status_scanner_copy_keyboard(i, &kbd)) continue;
+        if (!ble_copy_keyboard_status(i, &kbd)) continue;
 
         /* Channel filtering:
          *   scanner_ch = CHANNEL_ALL (10): Show all keyboards
@@ -3231,7 +3229,7 @@ static void ks_update_entries(void) {
 
         for (int i = 0; i < active_count; i++) {
             int kbd_idx = active_keyboards[i];
-            if (!zmk_status_scanner_copy_keyboard(kbd_idx, &kbd)) continue;
+            if (!ble_copy_keyboard_status(kbd_idx, &kbd)) continue;
 
             const char *name = kbd.ble_name[0] ? kbd.ble_name : "Unknown";
             uint8_t channel = kbd.data.channel;  /* Get keyboard's channel */
@@ -3242,7 +3240,7 @@ static void ks_update_entries(void) {
         /* Just update existing entries (same channel filter as creation path) */
         int entry_idx = 0;
         for (int i = 0; i < CONFIG_PROSPECTOR_MAX_KEYBOARDS && entry_idx < ks_entry_count; i++) {
-            if (!zmk_status_scanner_copy_keyboard(i, &kbd)) continue;
+            if (!ble_copy_keyboard_status(i, &kbd)) continue;
 
             /* Apply same channel filter as creation path */
             if (scanner_ch != CHANNEL_ALL && kbd.data.channel != scanner_ch) {
@@ -3327,8 +3325,8 @@ static void destroy_keyboard_select_widgets(void) {
 static void create_keyboard_select_widgets(void) {
     LOG_INF("Creating keyboard select widgets...");
 
-    /* Get current selection from scanner_core.c */
-    ks_selected_keyboard = scanner_get_selected_keyboard();
+    /* 取当前选中的槽位（本机数据源） */
+    ks_selected_keyboard = ble_get_selected_keyboard();
     LOG_INF("Current selected keyboard: %d", ks_selected_keyboard);
 
     /* Title (left side) */
@@ -3512,7 +3510,7 @@ static void swipe_process_timer_cb(lv_timer_t *timer) {
             lv_obj_invalidate(screen_obj);
             create_main_screen_widgets();
             current_screen = SCREEN_MAIN;
-            scanner_msg_send_display_refresh();
+            ble_msg_send_display_refresh();
             LOG_INF(">>> Transition complete");
         }
         break;
@@ -3535,7 +3533,7 @@ static void swipe_process_timer_cb(lv_timer_t *timer) {
             lv_obj_invalidate(screen_obj);
             create_main_screen_widgets();
             current_screen = SCREEN_MAIN;
-            scanner_msg_send_display_refresh();
+            ble_msg_send_display_refresh();
             LOG_INF(">>> Transition complete");
         } else if (current_screen == SCREEN_MAIN) {
             LOG_INF(">>> Transitioning: MAIN -> KEYBOARD_SELECT");
@@ -3571,7 +3569,7 @@ static void swipe_process_timer_cb(lv_timer_t *timer) {
             lv_obj_invalidate(screen_obj);
             create_main_screen_widgets();
             current_screen = SCREEN_MAIN;
-            scanner_msg_send_display_refresh();
+            ble_msg_send_display_refresh();
             LOG_INF(">>> Transition complete");
         } else if (current_screen == SCREEN_KEYBOARD_SELECT) {
             /* Channel decrement on left swipe */
@@ -3592,7 +3590,7 @@ static void swipe_process_timer_cb(lv_timer_t *timer) {
             lv_obj_invalidate(screen_obj);
             create_main_screen_widgets();
             current_screen = SCREEN_MAIN;
-            scanner_msg_send_display_refresh();
+            ble_msg_send_display_refresh();
             LOG_INF(">>> Transition complete");
         } else if (current_screen == SCREEN_MAIN) {
             LOG_INF(">>> Transitioning: MAIN -> QUICK_ACTIONS");

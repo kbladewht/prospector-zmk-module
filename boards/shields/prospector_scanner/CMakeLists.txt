@@ -13,6 +13,9 @@ if(CONFIG_SHIELD_PROSPECTOR_SCANNER)
     target_sources_ifdef(CONFIG_ZMK_DISPLAY_STATUS_SCREEN_CUSTOM app PRIVATE src/custom_status_screen.c)
     target_sources_ifdef(CONFIG_ZMK_DISPLAY_STATUS_SCREEN_CUSTOM app PRIVATE src/hello_widget.c)
 
+    # 状态屏数据源（替代原模块 scanner_core.c，接口名为 ble_*）
+    target_sources_ifdef(CONFIG_ZMK_DISPLAY_STATUS_SCREEN_CUSTOM app PRIVATE src/s7789_update.c)
+
     # Swipe gesture event (ZMK event system - thread-safe)
     target_sources_ifdef(CONFIG_ZMK_DISPLAY_STATUS_SCREEN_CUSTOM app PRIVATE src/events/swipe_gesture_event.c)
 
