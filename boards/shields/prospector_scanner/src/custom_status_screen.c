@@ -320,12 +320,12 @@ static void load_display_settings(void) {
 
 /* Forward declarations for layer display helpers */
 static void create_layer_list_widgets(lv_obj_t *parent, int y_offset);
-static void destroy_layer_list_widgets(void);
+// static void destroy_layer_list_widgets(void);
 static void create_over_max_widget(lv_obj_t *parent, int layer, int y_offset);
-static void destroy_over_max_widget(void);
+// static void destroy_over_max_widget(void);
 /* Slide mode helpers */
 static void create_layer_slide_widgets(lv_obj_t *parent, int y_offset);
-static void destroy_layer_slide_widgets(void);
+// static void destroy_layer_slide_widgets(void);
 static void update_layer_slide_display(int layer, bool animate);
 static lv_color_t get_slide_layer_color(int layer, int max_layer);
 
@@ -333,7 +333,7 @@ static lv_color_t get_slide_layer_color(int layer, int max_layer);
 static bool ui_interaction_active = false;
 
 /* LVGL input device registration flag - register once when first settings screen shown */
-static bool lvgl_indev_registered = false;
+// static bool lvgl_indev_registered = false;
 
 /* ========== System Settings Screen Widgets (NO CONTAINER) ========== */
 static lv_obj_t *ss_title_label = NULL;
@@ -793,10 +793,10 @@ lv_obj_t *zmk_display_status_screen(void) {
     #define KB_BAR_WIDTH_4     52
 
     /* X offsets for each layout (from center) */
-    static const int16_t kb_x_offsets_1[] = {0};
+    // static const int16_t kb_x_offsets_1[] = {0};
     static const int16_t kb_x_offsets_2[] = {-70, 70};
-    static const int16_t kb_x_offsets_3[] = {-90, 0, 90};
-    static const int16_t kb_x_offsets_4[] = {-100, -35, 35, 100};
+    // static const int16_t kb_x_offsets_3[] = {-90, 0, 90};
+    // static const int16_t kb_x_offsets_4[] = {-100, -35, 35, 100};
 
     /* Create all 4 battery slot widgets (initially hidden) */
     for (int i = 0; i < MAX_KB_BATTERIES; i++) {
@@ -1070,15 +1070,15 @@ static void create_layer_list_widgets(lv_obj_t *parent, int y_offset) {
     }
 }
 
-/* Helper to destroy layer list widgets */
-static void destroy_layer_list_widgets(void) {
-    for (int i = 0; i < 10; i++) {
-        if (layer_labels[i]) {
-            lv_obj_del(layer_labels[i]);
-            layer_labels[i] = NULL;
-        }
-    }
-}
+// /* Helper to destroy layer list widgets */
+// static void destroy_layer_list_widgets(void) {
+//     for (int i = 0; i < 10; i++) {
+//         if (layer_labels[i]) {
+//             lv_obj_del(layer_labels[i]);
+//             layer_labels[i] = NULL;
+//         }
+//     }
+// }
 
 /* Helper to create over-max label widget */
 static void create_over_max_widget(lv_obj_t *parent, int layer, int y_offset) {
@@ -1096,13 +1096,13 @@ static void create_over_max_widget(lv_obj_t *parent, int layer, int y_offset) {
     lv_obj_align(layer_over_max_label, LV_ALIGN_TOP_MID, 0, y_offset);
 }
 
-/* Helper to destroy over-max widget */
-static void destroy_over_max_widget(void) {
-    if (layer_over_max_label) {
-        lv_obj_del(layer_over_max_label);
-        layer_over_max_label = NULL;
-    }
-}
+// /* Helper to destroy over-max widget */
+// static void destroy_over_max_widget(void) {
+//     if (layer_over_max_label) {
+//         lv_obj_del(layer_over_max_label);
+//         layer_over_max_label = NULL;
+//     }
+// }
 
 /* Callback to delete object after slide-out animation completes */
 static void slide_out_ready_cb(lv_anim_t *anim) {
@@ -1317,16 +1317,16 @@ static void create_layer_slide_widgets(lv_obj_t *parent, int y_offset) {
 }
 
 /* Destroy slide mode layer widgets */
-static void destroy_layer_slide_widgets(void) {
-    for (int i = 0; i < SLIDE_VISIBLE_COUNT; i++) {
-        if (layer_slide_labels[i]) {
-            lv_anim_del(layer_slide_labels[i], NULL);  /* Cancel any running animations */
-            lv_obj_del(layer_slide_labels[i]);
-            layer_slide_labels[i] = NULL;
-        }
-    }
-    layer_slide_window_start = 0;
-}
+// static void destroy_layer_slide_widgets(void) {
+//     for (int i = 0; i < SLIDE_VISIBLE_COUNT; i++) {
+//         if (layer_slide_labels[i]) {
+//             lv_anim_del(layer_slide_labels[i], NULL);  /* Cancel any running animations */
+//             lv_obj_del(layer_slide_labels[i]);
+//             layer_slide_labels[i] = NULL;
+//         }
+//     }
+//     layer_slide_window_start = 0;
+// }
 
 /* Reset all label positions to ensure they stay in correct place */
 static void slide_reset_positions(void) {

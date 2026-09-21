@@ -481,36 +481,36 @@ static void update_layer_display(uint8_t active_layer) {
     }
 }
 
-/* ========== Battery Circles ========== */
+// /* ========== Battery Circles ========== */
 
-static void create_battery_arc(lv_obj_t *parent, lv_obj_t **arc, lv_obj_t **label_box,
-                               lv_obj_t **label, lv_obj_t **battery_label,
-                               int x_pos, const char *title) {
-    int arc_size = 58;
-    int arc_left = 60;
+// static void create_battery_arc(lv_obj_t *parent, lv_obj_t **arc, lv_obj_t **label_box,
+//                                lv_obj_t **label, lv_obj_t **battery_label,
+//                                int x_pos, const char *title) {
+//     int arc_size = 58;
+//     int arc_left = 60;
 
-    /* Arc */
-    *arc = lv_arc_create(parent);
-    lv_obj_set_size(*arc, arc_size, arc_size);
-    lv_obj_set_pos(*arc, x_pos, 2);
-    lv_arc_set_range(*arc, 0, 100);
-    lv_arc_set_value(*arc, 0);
-    lv_arc_set_bg_angles(*arc, 0, 360);
-    lv_arc_set_rotation(*arc, 270);
-    lv_obj_set_style_arc_width(*arc, ARC_WIDTH_DISCONNECTED, LV_PART_MAIN);
-    lv_obj_set_style_arc_width(*arc, ARC_WIDTH_DISCONNECTED, LV_PART_INDICATOR);
-    lv_obj_set_style_arc_color(*arc, lv_color_hex(DISPLAY_COLOR_BATTERY_DISCONNECTED_RING), LV_PART_MAIN);
-    lv_obj_set_style_arc_color(*arc, lv_color_hex(DISPLAY_COLOR_BATTERY_DISCONNECTED_FILL), LV_PART_INDICATOR);
-    lv_obj_remove_style(*arc, NULL, LV_PART_KNOB);
-    lv_obj_clear_flag(*arc, LV_OBJ_FLAG_CLICKABLE);
+//     /* Arc */
+//     *arc = lv_arc_create(parent);
+//     lv_obj_set_size(*arc, arc_size, arc_size);
+//     lv_obj_set_pos(*arc, x_pos, 2);
+//     lv_arc_set_range(*arc, 0, 100);
+//     lv_arc_set_value(*arc, 0);
+//     lv_arc_set_bg_angles(*arc, 0, 360);
+//     lv_arc_set_rotation(*arc, 270);
+//     lv_obj_set_style_arc_width(*arc, ARC_WIDTH_DISCONNECTED, LV_PART_MAIN);
+//     lv_obj_set_style_arc_width(*arc, ARC_WIDTH_DISCONNECTED, LV_PART_INDICATOR);
+//     lv_obj_set_style_arc_color(*arc, lv_color_hex(DISPLAY_COLOR_BATTERY_DISCONNECTED_RING), LV_PART_MAIN);
+//     lv_obj_set_style_arc_color(*arc, lv_color_hex(DISPLAY_COLOR_BATTERY_DISCONNECTED_FILL), LV_PART_INDICATOR);
+//     lv_obj_remove_style(*arc, NULL, LV_PART_KNOB);
+//     lv_obj_clear_flag(*arc, LV_OBJ_FLAG_CLICKABLE);
 
-    /* Label box inside arc - not used for 2-peripheral layout */
-    (void)label_box;
-    (void)label;
-    (void)battery_label;
-    (void)title;
-    (void)arc_left;
-}
+//     /* Label box inside arc - not used for 2-peripheral layout */
+//     (void)label_box;
+//     (void)label;
+//     (void)battery_label;
+//     (void)title;
+//     (void)arc_left;
+// }
 
 static void create_battery_circles(lv_obj_t *parent) {
     battery_widgets.container = lv_obj_create(parent);
