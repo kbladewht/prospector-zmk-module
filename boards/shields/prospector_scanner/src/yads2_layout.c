@@ -664,19 +664,22 @@ void yads2_layout_update(uint8_t active_layer, const char *layer_name,
     bool have_keyboard = (name[0] != '\0');
 
     /* 电量槽位：槽 0 = 键盘本体，其后是每个有上报数据的外设。
-     * 还没检测到键盘时先预览分体（L + R）布局并填占位电量，
-     * 这样底部一行已经是接上键盘后的样子。 */
+     * 无论有没有外设数据，都至少保留 L + R 两格，保持"左右两组"的版式；
+     * 没有数据的格子按占位电量（50%）显示，接上真正的外设后会自动变多。
+     * 还没检测到键盘时同样先预览 L + R 布局。 */
     int count = YADS2_BATTERY_DEFAULT_SLOTS;
     if (have_keyboard) {
-        count = 1;
         for (int i = 0; i < YADS2_MAX_PERIPHERALS; i++) {
             if (peripheral_connected[i] || peripheral_battery[i] > 0) {
-                count = i + 2;
+                int candidate = i + 2;
+                if (candidate > count) {
+                    count = candidate;
+                }
             }
         }
-        if (count < 1) {
-            count = 1;
-        }
+    }
+    if (count > YADS2_MAX_BATTERIES) {
+        count = YADS2_MAX_BATTERIES;
     }
 
     if (count != battery_slot_count) {
