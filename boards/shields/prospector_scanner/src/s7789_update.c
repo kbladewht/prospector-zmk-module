@@ -21,6 +21,7 @@
  */
 
 #include <zephyr/kernel.h>
+#include <zephyr/init.h>
 #include <zephyr/logging/log.h>
 
 #include <errno.h>
@@ -28,6 +29,7 @@
 #include <string.h>
 
 #include "s7789_update.h"
+#include "fault_recovery.h"
 
 #include <zmk/status_advertisement.h>
 #include <zmk/keymap.h>
@@ -65,6 +67,31 @@ static int s_selected_keyboard = 0;            /* 本机模式下只有槽位 0 
 
 volatile int8_t ble_signal_rssi = 0;
 volatile int32_t ble_signal_rate_x100 = -1; /* 负值 => 界面显示 "-.--Hz" */
+
+/* ========== 看门狗喂狗（系统工作队列） ========== */
+
+/* 原来 scanner_core.c 用 100ms 的 process_work 喂 fault_recovery.c 的 "core"
+ * 看门狗通道；该文件移除后必须由这里接手，否则 30s 超时就会自动重启。
+ * 跑在系统工作队列上，因此仍然能检测出系统工作队列卡死。 */
+#define BLE_CORE_ALIVE_INTERVAL_MS 250
+
+static void ble_core_alive_work_handler(struct k_work *work) {
+    struct k_work_delayable *dwork = k_work_delayable_from_work(work);
+
+    ble_core_process_alive();
+
+    k_work_reschedule(dwork, K_MSEC(BLE_CORE_ALIVE_INTERVAL_MS));
+}
+
+static K_WORK_DELAYABLE_DEFINE(ble_core_alive_work, ble_core_alive_work_handler);
+
+static int s7789_update_init(void) {
+    k_work_schedule(&ble_core_alive_work, K_MSEC(BLE_CORE_ALIVE_INTERVAL_MS));
+    LOG_INF("本机数据源已就绪（ble_* 接口，scanner 已移除）");
+    return 0;
+}
+
+SYS_INIT(s7789_update_init, APPLICATION, 96);
 
 /* ========== 本机状态读取 ========== */
 

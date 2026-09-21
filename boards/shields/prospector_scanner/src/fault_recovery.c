@@ -33,7 +33,6 @@
 #include <zephyr/task_wdt/task_wdt.h>
 #endif
 
-#include <zmk/scanner_core.h>
 #include "fault_recovery.h"
 
 LOG_MODULE_REGISTER(fault_recovery, LOG_LEVEL_INF);
@@ -116,7 +115,8 @@ void k_sys_fatal_error_handler(unsigned int reason, const struct arch_esf *esf) 
  *
  * Two channels, each with a WATCHDOG_PERIOD_MS budget:
  *   display - fed by the 100ms LVGL timer on the dedicated display thread
- *   core    - fed by scanner_core's 100ms process_work on the system workqueue
+ *   core    - fed by s7789_update.c's periodic work on the system workqueue
+ *             (原 scanner_core.c 的 process_work，该文件已移除)
  * On expiry the k_timer ISR records a synthetic reason and reboots; the
  * next boot reports it like any other crash.
  */
@@ -168,8 +168,9 @@ void fault_recovery_display_alive(void) {
     }
 }
 
-/* Strong definition of scanner_core's weak liveness hook. */
-void scanner_core_process_alive(void) {
+/* 系统工作队列存活回调：由 s7789_update.c 的周期任务调用（原来由
+ * scanner_core.c 的 process_work 调用，该文件已移除）。 */
+void ble_core_process_alive(void) {
     if (wdt_core_channel >= 0) {
         task_wdt_feed(wdt_core_channel);
     }
@@ -191,6 +192,7 @@ static void watchdog_init(void) {
 }
 #else
 void fault_recovery_display_alive(void) {}
+void ble_core_process_alive(void) {}
 static inline void watchdog_init(void) {}
 #endif /* CONFIG_PROSPECTOR_SCANNER_TASK_WATCHDOG */
 

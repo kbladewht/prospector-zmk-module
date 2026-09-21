@@ -32,7 +32,7 @@ uint32_t fault_recovery_reset_cause(void);
  * Zephyr's small K_ERR_* fatal codes) so the boot log can tell a hang from
  * a fault. */
 #define FAULT_REASON_HANG_DISPLAY 0xDEAD0001u /* LVGL display thread stopped ticking */
-#define FAULT_REASON_HANG_CORE    0xDEAD0002u /* scanner core process_work stopped running */
+#define FAULT_REASON_HANG_CORE    0xDEAD0002u /* system workqueue liveness work stopped */
 
 /**
  * @brief Feed the display-thread watchdog channel
@@ -42,3 +42,13 @@ uint32_t fault_recovery_reset_cause(void);
  * device records FAULT_REASON_HANG_DISPLAY and reboots.
  */
 void fault_recovery_display_alive(void);
+
+/**
+ * @brief Feed the system-workqueue ("core") watchdog channel
+ *
+ * Call from a periodic work item on the system workqueue. If this stops
+ * being called for the watchdog period the device records
+ * FAULT_REASON_HANG_CORE and reboots. 本固件里调用方是 s7789_update.c
+ * （它取代了原来的 scanner_core.c）。
+ */
+void ble_core_process_alive(void);
