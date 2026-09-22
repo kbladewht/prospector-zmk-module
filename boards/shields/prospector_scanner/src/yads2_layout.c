@@ -39,6 +39,7 @@ LOG_MODULE_REGISTER(yads2_layout, CONFIG_ZMK_LOG_LEVEL);
  * LVGL 会把缺失字形画成占位方框（CONFIG_LV_USE_FONT_PLACEHOLDER=y）。
  * 这些子集字体只用于固定的全大写/数字字符串。 */
 LV_FONT_DECLARE(lv_font_montserrat_16);
+LV_FONT_DECLARE(lv_font_montserrat_28);
 
 /* ========== 颜色 ==========
  * 基调沿用上游 YADS 界面（janpfischer/zmk-dongle-screen）：默认白字，
@@ -75,8 +76,8 @@ LV_FONT_DECLARE(lv_font_montserrat_16);
  * 之后由 yads2_layout_set_layer() 切换。 */
 #define YADS2_LAYER_ROW_COUNT 3
 #define YADS2_LAYER_ROW_TOP_Y 55 /* 最上面一行的顶端 */
-#define YADS2_LAYER_ROW_STEP 35  /* = FR_Medium_32 行高，保证行距均匀 */
-#define YADS2_LAYER_ROW_WIDTH 250
+#define YADS2_LAYER_ROW_STEP 35  /* 行距（FG_Medium_26 行高 < 该值，留一点呼吸感） */
+#define YADS2_LAYER_ROW_WIDTH 272
 
 /* NerdFont 修饰键行，在层滚筒下方 */
 #define YADS2_MOD_Y 160
@@ -533,7 +534,10 @@ static void yads2_create_center(lv_obj_t *parent) {
     /* 层滚筒的三行；三行共用同一字体（当前层只靠颜色高亮，行距才能均匀） */
     for (int row = 0; row < YADS2_LAYER_ROW_COUNT; row++) {
         layer_rows[row] = lv_label_create(parent);
-        lv_obj_set_style_text_font(layer_rows[row], &FR_Medium_32, LV_PART_MAIN);
+        /* 层名是 keymap 里的完整名字（含小写/空格，如 "Default Layer"），必须用
+         * 字形集完整的字体：FR_xx / FG_xx 这类 carrefinho 字体是给大写短文本用的，
+         * 缺字形会画成占位方框（见本文件顶部说明）。classic 界面的层名也用这个。 */
+        lv_obj_set_style_text_font(layer_rows[row], &lv_font_montserrat_28, LV_PART_MAIN);
         lv_obj_set_style_text_color(layer_rows[row], lv_color_hex(YADS2_COLOR_DIM),
                                     LV_PART_MAIN);
         lv_obj_set_style_text_align(layer_rows[row], LV_TEXT_ALIGN_CENTER, LV_PART_MAIN);
