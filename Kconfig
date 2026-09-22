@@ -237,7 +237,7 @@ config PROSPECTOR_MODE_SCANNER
 
 config PROSPECTOR_TOUCH_ENABLED
     bool "Enable touch panel support"
-    default y
+    default n
     depends on PROSPECTOR_MODE_SCANNER
     select INPUT
     select INPUT_CST816S
@@ -437,7 +437,7 @@ config PROSPECTOR_BRIGHTNESS_FADE_STEPS
 # Ambient Light Sensor Settings
 config PROSPECTOR_USE_AMBIENT_LIGHT_SENSOR
     bool "Enable ambient light sensor for automatic brightness"
-    default y
+    default n
     depends on PROSPECTOR_MODE_SCANNER
     help
       Enable APDS9960 ambient light sensor for automatic brightness adjustment.
