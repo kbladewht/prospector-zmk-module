@@ -133,7 +133,7 @@ static void ble_fill_adv_data(struct zmk_status_adv_data *d) {
 
     uint8_t profile = 0;
     bool ble_connected = false;
-    bool ble_bonded = false;
+    // bool ble_bonded = false;
 #if IS_ENABLED(CONFIG_ZMK_BLE)
     profile = (uint8_t)zmk_ble_active_profile_index();
     ble_connected = zmk_ble_active_profile_is_connected();

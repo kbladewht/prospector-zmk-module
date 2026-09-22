@@ -3,7 +3,7 @@
 if SHIELD_PROSPECTOR_SCANNER
 
 config ZMK_KEYBOARD_NAME
-    default "pro-rece"
+    default "pro-rece2"
 
 config ZMK_DISPLAY
     default y
