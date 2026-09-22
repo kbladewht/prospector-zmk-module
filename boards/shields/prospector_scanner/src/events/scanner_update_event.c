@@ -6,4 +6,4 @@
 
 #include "scanner_update_event.h"
 
-ZMK_EVENT_IMPL(zmk_scanner_update_event);
+// ZMK_EVENT_IMPL(zmk_scanner_update_event);

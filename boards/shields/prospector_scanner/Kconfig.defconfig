@@ -1,16 +1,16 @@
 # Prospector Scanner - Using display_test Kconfig.defconfig for debugging
 
-if SHIELD_PROSPECTOR_SCANNER
+
 
 config ZMK_KEYBOARD_NAME
     default "pro-rece2"
 
 config ZMK_DISPLAY
-    default y
+    default n
 
 config PROSPECTOR_SCANNER_TASK_WATCHDOG
     bool "Software watchdog that reboots the scanner if the display or core thread stops"
-    default y
+    default n
     select TASK_WDT
     help
       Arms a pure-software task watchdog (no hardware WDT, so firmware
@@ -54,5 +54,3 @@ config LV_COLOR_16_SWAP
 choice ZMK_DISPLAY_STATUS_SCREEN
     default ZMK_DISPLAY_STATUS_SCREEN_CUSTOM
 endchoice
-
-endif

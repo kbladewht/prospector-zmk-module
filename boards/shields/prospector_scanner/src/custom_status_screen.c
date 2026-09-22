@@ -3656,5 +3656,5 @@ static int swipe_gesture_listener(const zmk_event_t *eh) {
     return ZMK_EV_EVENT_BUBBLE;
 }
 
-ZMK_LISTENER(swipe_gesture, swipe_gesture_listener);
-ZMK_SUBSCRIPTION(swipe_gesture, zmk_swipe_gesture_event);
+// ZMK_LISTENER(swipe_gesture, swipe_gesture_listener);
+// ZMK_SUBSCRIPTION(swipe_gesture, zmk_swipe_gesture_event);
