@@ -32,6 +32,8 @@
 #include "fault_recovery.h"
 
 #include <zmk/status_advertisement.h>
+#include <zmk/event_manager.h>
+#include <zmk/events/battery_state_changed.h>
 #include <zmk/keymap.h>
 #include <zmk/hid.h>
 #if IS_ENABLED(CONFIG_ZMK_BLE)
@@ -93,6 +95,31 @@ static int s7789_update_init(void) {
 
 SYS_INIT(s7789_update_init, APPLICATION, 96);
 
+/* ========== 分体副手电量（ZMK split 上报） ========== */
+
+#if IS_ENABLED(CONFIG_ZMK_SPLIT_BLE) && IS_ENABLED(CONFIG_ZMK_SPLIT_ROLE_CENTRAL)
+/* s_peripheral_battery[source] = 对应副手的电量百分比。
+ * 由 split 事件（蓝牙上下文）写入、显示线程读取，单字节读写无需加锁。 */
+static volatile uint8_t s_peripheral_battery[3];
+
+static int peripheral_battery_handler(const zmk_event_t *eh) {
+    const struct zmk_peripheral_battery_state_changed *ev =
+        as_zmk_peripheral_battery_state_changed(eh);
+
+    if (ev == NULL) {
+        return ZMK_EV_EVENT_BUBBLE;
+    }
+    if (ev->source < ARRAY_SIZE(s_peripheral_battery)) {
+        s_peripheral_battery[ev->source] = ev->state_of_charge;
+        s_update_pending = true; /* 有变化立刻刷新界面 */
+    }
+    return ZMK_EV_EVENT_BUBBLE;
+}
+
+ZMK_LISTENER(s7789_update_peripheral_battery, peripheral_battery_handler);
+ZMK_SUBSCRIPTION(s7789_update_peripheral_battery, zmk_peripheral_battery_state_changed);
+#endif /* CONFIG_ZMK_SPLIT_BLE && CONFIG_ZMK_SPLIT_ROLE_CENTRAL */
+
 /* ========== 本机状态读取 ========== */
 
 /* 本机当前频道：跟随显示端设置，保证频道过滤始终命中本机 */
@@ -125,7 +152,33 @@ static void ble_fill_adv_data(struct zmk_status_adv_data *d) {
 #if IS_ENABLED(CONFIG_ZMK_BATTERY_REPORTING)
     soc = zmk_battery_state_of_charge();
 #endif
-    d->battery_level = soc;
+
+    /* 电量槽位分配：把所有"可用的电量读数"按顺序排好 —— 本机（读数有效时）
+     * 在第 0 格，其后依次是分体副手（ZMK split 上报的电量）。
+     * 这样：本机是某一半时 0/1 格 = L/R；本机是没有电池的 dongle 时，两只
+     * 副手的电量会自动顶到第 0、1 格，界面不会被限制成只剩一格。 */
+    uint8_t levels[4];
+    int level_count = 0;
+
+    if (soc > 0 && level_count < (int)ARRAY_SIZE(levels)) {
+        levels[level_count++] = soc;
+    }
+#if IS_ENABLED(CONFIG_ZMK_SPLIT_BLE) && IS_ENABLED(CONFIG_ZMK_SPLIT_ROLE_CENTRAL)
+    for (int i = 0; i < (int)ARRAY_SIZE(s_peripheral_battery); i++) {
+        if (level_count >= (int)ARRAY_SIZE(levels)) {
+            break;
+        }
+        const uint8_t lv = s_peripheral_battery[i];
+        if (lv > 0) {
+            levels[level_count++] = lv;
+        }
+    }
+#endif
+
+    d->battery_level = (level_count > 0) ? levels[0] : 0;
+    for (int i = 0; i < 3; i++) {
+        d->peripheral_battery[i] = (i + 1 < level_count) ? levels[i + 1] : 0;
+    }
 
     /* 层号：未启用层重排（CONFIG_ZMK_KEYMAP_LAYER_REORDERING）时 index == id */
     const zmk_keymap_layer_index_t layer_index = zmk_keymap_highest_layer_active();
@@ -163,11 +216,6 @@ static void ble_fill_adv_data(struct zmk_status_adv_data *d) {
 
     d->device_role = ZMK_DEVICE_ROLE_STANDALONE;
     d->device_index = 0;
-
-    /* 分体副手电量：本机模式下没有来源，保持 0（界面按"无此设备"处理） */
-    d->peripheral_battery[0] = 0;
-    d->peripheral_battery[1] = 0;
-    d->peripheral_battery[2] = 0;
 
     /* 层名：直接查本机 keymap（4 字节定长、无结束符，与旧协议一致） */
     const char *lname = zmk_keymap_layer_name(layer_index);

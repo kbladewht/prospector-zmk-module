@@ -281,7 +281,7 @@ config PROSPECTOR_MAX_KEYBOARDS
     int "Maximum number of keyboards to track"
     range 1 5
     default 3
-    depends on PROSPECTOR_MULTI_KEYBOARD
+    # depends on PROSPECTOR_MULTI_KEYBOARD
     help
       Maximum number of keyboards that can be tracked simultaneously.
 
@@ -323,7 +323,7 @@ config PROSPECTOR_SCANNER_MAIN_LOOP_INTERVAL_MS
     int "Main loop timer interval in milliseconds"
     range 50 500
     default 150
-    depends on PROSPECTOR_MODE_SCANNER
+    # depends on PROSPECTOR_MODE_SCANNER
     help
       Main loop timer interval for UI updates and message processing.
       Lower values provide more responsive UI but use more CPU power.
