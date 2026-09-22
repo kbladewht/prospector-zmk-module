@@ -6,9 +6,9 @@ zephyr_include_directories(include)
 zephyr_include_directories(${APPLICATION_SOURCE_DIR}/include)
 
 # Add status advertisement support - EXACTLY like rgbled-widget
-if(CONFIG_ZMK_STATUS_ADVERTISEMENT)
-        target_sources(app PRIVATE src/status_advertisement.c)
-endif()
+# if(CONFIG_ZMK_STATUS_ADVERTISEMENT)
+#         target_sources(app PRIVATE src/status_advertisement.c)
+# endif()
 
 # Add scanner mode support.
 # status_scanner.c = BLE receive layer, scanner_core.c = keyboard state.

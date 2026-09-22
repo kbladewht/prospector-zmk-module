@@ -190,9 +190,9 @@ static struct bt_conn_cb conn_callbacks = {
 };
 
 static int zmk_split_bt_central_init(PROSPECTOR_SYS_INIT_ARGS) {
-    PROSPECTOR_SYS_INIT_UNUSED;
-    bt_conn_cb_register(&conn_callbacks);
+    // PROSPECTOR_SYS_INIT_UNUSED;
+    // bt_conn_cb_register(&conn_callbacks);
     return 0;
 }
 
-SYS_INIT(zmk_split_bt_central_init, APPLICATION, CONFIG_ZMK_BLE_INIT_PRIORITY);
+// SYS_INIT(zmk_split_bt_central_init, APPLICATION, CONFIG_ZMK_BLE_INIT_PRIORITY);
