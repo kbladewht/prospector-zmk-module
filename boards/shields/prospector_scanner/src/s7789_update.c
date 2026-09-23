@@ -46,6 +46,9 @@
 #if IS_ENABLED(CONFIG_ZMK_WPM)
 #include <zmk/wpm.h>
 #endif
+#if IS_ENABLED(CONFIG_ZMK_SPLIT_BLE_CENTRAL_BATTERY_LEVEL_FETCHING)
+#include <zmk/split/central.h>
+#endif
 
 LOG_MODULE_DECLARE(zmk, CONFIG_ZMK_LOG_LEVEL);
 
@@ -55,6 +58,7 @@ LOG_MODULE_DECLARE(zmk, CONFIG_ZMK_LOG_LEVEL);
 /* 显示端用来过滤键盘的运行时频道（定义在 system_settings_widget.c，
  * custom_status_screen.c 里也有一份 weak 兜底实现）。 */
 extern uint8_t scanner_get_runtime_channel(void) __attribute__((weak));
+extern uint8_t qmk_display_active_layer(void) __attribute__((weak));
 
 /* ========== 内部状态（仅显示线程访问） ========== */
 
@@ -64,6 +68,9 @@ static volatile bool s_force_update;           /* 强制下一次刷新（屏幕
 static uint32_t s_last_poll_ms;                /* 上次采样时间 */
 static int s_last_battery = -1;                /* 上次上报的本机电量 */
 static int s_selected_keyboard = 0;            /* 本机模式下只有槽位 0 */
+#if IS_ENABLED(CONFIG_ZMK_SPLIT_BLE_CENTRAL_BATTERY_LEVEL_FETCHING)
+static uint8_t s_last_right_battery;
+#endif
 
 volatile int8_t ble_signal_rssi = 0;
 volatile int32_t ble_signal_rate_x100 = -1; /* 负值 => 界面显示 "-.--Hz" */
@@ -109,6 +116,17 @@ static uint8_t ble_local_modifiers(void) {
     return (report != NULL) ? report->body.modifiers : 0;
 }
 
+/* The corne_dongle firmware handles MO() in the embedded QMK keymap. Its
+ * layer_state is independent from ZMK's keymap state, so use it for the
+ * display whenever the QMK compatibility layer is part of this build. */
+static uint8_t ble_local_active_layer(void) {
+    if (qmk_display_active_layer != NULL) {
+        return qmk_display_active_layer();
+    }
+
+    return (uint8_t)zmk_keymap_highest_layer_active();
+}
+
 /* 把本机状态填进原来的 26 字节数据结构（字段布局与旧协议保持一致） */
 static void ble_fill_adv_data(struct zmk_status_adv_data *d) {
     memset(d, 0, sizeof(*d));
@@ -127,9 +145,8 @@ static void ble_fill_adv_data(struct zmk_status_adv_data *d) {
 #endif
     d->battery_level = soc;
 
-    /* 层号：未启用层重排（CONFIG_ZMK_KEYMAP_LAYER_REORDERING）时 index == id */
-    const zmk_keymap_layer_index_t layer_index = zmk_keymap_highest_layer_active();
-    d->active_layer = (uint8_t)layer_index;
+    const uint8_t layer_index = ble_local_active_layer();
+    d->active_layer = layer_index;
 
     uint8_t profile = 0;
     bool ble_connected = false;
@@ -165,12 +182,28 @@ bool ble_bonded = false;
     d->device_role = ZMK_DEVICE_ROLE_STANDALONE;
     d->device_index = 0;
 
-    /* 分体副手电量：本机模式下没有来源，保持 0（界面按"无此设备"处理） */
+    /* 分体副手（右手）电量：source=0 对应显示端的 "R" 槽位。
+     * 右手按键仍可用时，Battery Service 可能暂时返回 0；这不代表 split
+     * 链路断开，因此连接槽位仍存活时保留最后一次有效电量。 */
     d->peripheral_battery[0] = 0;
     d->peripheral_battery[1] = 0;
     d->peripheral_battery[2] = 0;
+#if IS_ENABLED(CONFIG_ZMK_SPLIT_BLE_CENTRAL_BATTERY_LEVEL_FETCHING)
+    uint8_t right_battery = 0;
+    if (zmk_split_central_get_peripheral_battery_level(0, &right_battery) == 0) {
+        if (right_battery > 0) {
+            s_last_right_battery = right_battery;
+        } else if (zmk_split_central_peripheral_is_connected(0)) {
+            right_battery = s_last_right_battery;
+        } else {
+            s_last_right_battery = 0;
+        }
+        d->peripheral_battery[0] = right_battery;
+    }
+#endif
 
-    /* 层名：直接查本机 keymap（4 字节定长、无结束符，与旧协议一致） */
+    /* The display layout renders the complete local layer name. This short
+     * field is retained for layouts that use the legacy advertisement data. */
     const char *lname = zmk_keymap_layer_name(layer_index);
     memset(d->layer_name, ' ', sizeof(d->layer_name));
     if (lname != NULL) {

@@ -273,8 +273,16 @@ static void yads2_render_battery_slot(int slot) {
 
     struct yads2_battery_slot *w = &battery_slots[slot];
     bool have_level = slot_connected[slot] && slot_levels[slot] > 0;
-    /* 还没有收到电量时显示占位值（默认 50%），让底部一行看起来完整 */
-    uint8_t level = have_level ? slot_levels[slot] : (uint8_t)YADS2_BATTERY_PLACEHOLDER_LEVEL;
+    /* 槽 0（本机）在还没收到电量时用占位值撑住版式；外设槽位断开后必须如实显示
+     * 断开状态，不能再退回占位电量，否则看起来像是电量一直卡在 50%。 */
+    uint8_t level;
+    if (have_level) {
+        level = slot_levels[slot];
+    } else if (slot == 0) {
+        level = (uint8_t)YADS2_BATTERY_PLACEHOLDER_LEVEL;
+    } else {
+        level = 0;
+    }
 
     /* 红绿灯：>50% 绿色，11..50% 琥珀色，<=10% 或无数据显示红色 */
     uint32_t state_color, track_color;
@@ -660,9 +668,12 @@ void yads2_layout_update(uint8_t active_layer, const char *layer_name,
     }
 
     ARG_UNUSED(wpm);           /* 本布局不显示 WPM */
-    ARG_UNUSED(active_layer);  /* 层滚筒由 yads2_layout_set_layer() 驱动 */
     ARG_UNUSED(layer_name);    /* 层名来自本机 keymap */
     ARG_UNUSED(usb_connected); /* 本机是 dongle，USB 一定在供电 */
+
+    if (layer_count > 0 && active_layer < layer_count) {
+        yads2_layout_set_layer(active_layer);
+    }
 
     const char *name = (keyboard_name != NULL) ? keyboard_name : "";
     bool have_keyboard = (name[0] != '\0');

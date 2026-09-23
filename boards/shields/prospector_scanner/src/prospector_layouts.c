@@ -13,6 +13,7 @@
 #include "radii_layout.h"
 #include "field_layout.h"
 #include "yads2_layout.h"
+#include <zephyr/kernel.h>
 #include <zephyr/logging/log.h>
 
 LOG_MODULE_REGISTER(prospector_layouts, CONFIG_ZMK_LOG_LEVEL);
@@ -24,6 +25,14 @@ static bool initialized = false;
 
 /* Cached data for layout switching */
 static struct prospector_keyboard_data cached_data = {0};
+
+/* Keep a short grace window for recently valid peripheral readings so a transient
+ * 0%/no-report sample does not instantly flip a still-live split half into
+ * "disconnected" on the screen. */
+static uint8_t last_good_peripheral_battery[OPERATOR_MAX_PERIPHERALS] = {0};
+static bool last_good_peripheral_connected[OPERATOR_MAX_PERIPHERALS] = {false};
+static uint32_t last_good_peripheral_time[OPERATOR_MAX_PERIPHERALS] = {0};
+#define PROSPECTOR_PERIPHERAL_GRACE_MS 4000U
 
 /* Forward declarations */
 static void destroy_current_layout(void);
@@ -234,9 +243,22 @@ static void update_current_layout(void) {
     /* Peripheral batteries: build arrays for all 3 possible peripherals */
     uint8_t peripheral_battery[OPERATOR_MAX_PERIPHERALS];
     bool peripheral_connected[OPERATOR_MAX_PERIPHERALS];
+    const uint32_t now_ms = k_uptime_get_32();
     for (int i = 0; i < OPERATOR_MAX_PERIPHERALS; i++) {
         peripheral_battery[i] = cached_data.peripheral_battery[i];
         peripheral_connected[i] = cached_data.has_dynamic_data && peripheral_battery[i] > 0;
+
+        if (!peripheral_connected[i] && last_good_peripheral_connected[i] &&
+            (now_ms - last_good_peripheral_time[i]) < PROSPECTOR_PERIPHERAL_GRACE_MS) {
+            peripheral_connected[i] = true;
+            peripheral_battery[i] = last_good_peripheral_battery[i];
+        }
+
+        if (peripheral_connected[i] && peripheral_battery[i] > 0) {
+            last_good_peripheral_battery[i] = peripheral_battery[i];
+            last_good_peripheral_connected[i] = true;
+            last_good_peripheral_time[i] = now_ms;
+        }
     }
 
     uint8_t wpm = cached_data.wpm_value;
