@@ -580,10 +580,9 @@ static void pending_update_timer_cb(lv_timer_t *timer) {
             kb_data.active_layer = data.layer;
             kb_data.modifier_flags = data.modifiers;
             kb_data.wpm_value = data.wpm;
+            /* 本机只有左右手两台设备：其余外设格位由上面的 {0} 初始化保持 0 */
             kb_data.battery_level = data.bat[0];
             kb_data.peripheral_battery[0] = data.bat[1];
-            kb_data.peripheral_battery[1] = data.bat[2];
-            kb_data.peripheral_battery[2] = data.bat[3];
             kb_data.profile_slot = data.profile;
             kb_data.usb_connected = data.usb_ready;
             kb_data.ble_connected = data.ble_connected;
@@ -604,13 +603,9 @@ static void pending_update_timer_cb(lv_timer_t *timer) {
                                       data.ble_bonded, data.profile);
             display_update_modifiers(data.modifiers);
 
-            /* Battery update */
-            if (data.bat[1] == 0 && data.bat[2] == 0 && data.bat[3] == 0) {
-                display_update_keyboard_battery_4(data.bat[0], 0, 0, 0);
-            } else {
-                display_update_keyboard_battery_4(data.bat[0], data.bat[1],
-                                                  data.bat[2], data.bat[3]);
-            }
+            /* Battery update：本机只有左右手两台设备，格子数由上面这个函数
+             * 按“值 > 0”自行决定（右手无读数时自然退化成单格），剩余格位恒为 0 */
+            display_update_keyboard_battery_4(data.bat[0], data.bat[1], 0, 0);
         }
     }
 

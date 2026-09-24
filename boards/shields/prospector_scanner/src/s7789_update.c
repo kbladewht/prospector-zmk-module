@@ -181,18 +181,16 @@ bool ble_bonded = false;
      * 通过 ble_battery_update() 推过来）：显示端不碰槽位 / identifier，
      * 也不去调 app 侧的函数。
      *
-     * 26 字节旧协议的电量字段（显示端拉平成 bat[0..3] 四个键盘电量格子）：
+     * 26 字节旧协议的电量字段（显示端拉平成 bat[0..3]，本机只填前两格）：
      *   battery_level         -> bat[0]：第 1 格，屏幕上的 L
      *   peripheral_battery[0] -> bat[1]：第 2 格，屏幕上的 R
-     *   peripheral_battery[1] -> bat[2]：旧协议的第 3 个键盘设备，本机模式不用
-     *   peripheral_battery[2] -> bat[3]：旧协议的第 4 个键盘设备，本机模式不用
-     * 本机（dongle）自身电量不占这 4 格，走 scanner_battery
+     * 旧协议里代表第 3、4 个键盘设备的 peripheral_battery[1] / [2] 本机用不到，
+     * 这里不赋值（memset 已清零，显示端按 0 = 无数据处理）。
+     * 本机（dongle）自身电量也不占这些格子，走 scanner_battery
      * （ble_scanner_battery_level），显示在屏幕上另一处的 Scanner Battery。
      */
     d->battery_level = ble_battery_left;
     d->peripheral_battery[0] = ble_battery_right;
-    d->peripheral_battery[1] = 0;
-    d->peripheral_battery[2] = 0;
 
     /* The display layout renders the complete local layer name. This short
      * field is retained for layouts that use the legacy advertisement data. */
@@ -238,10 +236,9 @@ static bool ble_poll_local_state(void) {
     memcpy(next.layer_name, adv.layer_name, sizeof(adv.layer_name));
     next.wpm = adv.wpm_value;
     next.modifiers = adv.modifier_flags;
+    /* 本机只有左右手两台设备：bat[0]/bat[1] 有值，bat[2]/bat[3] 保持 0（前面已 memset） */
     next.bat[0] = adv.battery_level;
     next.bat[1] = adv.peripheral_battery[0];
-    next.bat[2] = adv.peripheral_battery[1];
-    next.bat[3] = adv.peripheral_battery[2];
     next.usb_ready = (adv.status_flags & ZMK_STATUS_FLAG_USB_HID_READY) != 0;
     next.ble_connected = (adv.status_flags & ZMK_STATUS_FLAG_BLE_CONNECTED) != 0;
     next.ble_bonded = (adv.status_flags & ZMK_STATUS_FLAG_BLE_BONDED) != 0;
