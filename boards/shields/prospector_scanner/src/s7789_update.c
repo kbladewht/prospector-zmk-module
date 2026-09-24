@@ -136,10 +136,7 @@ static void ble_fill_adv_data(struct zmk_status_adv_data *d) {
 
     d->version = PROSPECTOR_ENCODE_VERSION();
 
-    /* 电量字段在显示端按手分配：battery_level = "L"（左手），
-     * peripheral_battery[0] = "R"（右手）。本机（dongle）自身电量不占这两个
-     * 槽位，先清零，稍后由 app 推过来的缓存填充（见下方"左右手电量"）。 */
-    d->battery_level = 0;
+    /* 电量字段统一在下方"左右手电量"处填充（本机自身电量不占键盘电量格子） */
 
     const uint8_t layer_index = ble_local_active_layer();
     d->active_layer = layer_index;
@@ -182,12 +179,20 @@ bool ble_bonded = false;
      * 右手 -> peripheral_battery[0]（显示端 "R" 槽位）。
      * 只读 s7789_update_battery.c 里那份缓存（app/src/battery_cb.c 定时刷新后
      * 通过 ble_battery_update() 推过来）：显示端不碰槽位 / identifier，
-     * 也不去调 app 侧的函数。 */
-    d->peripheral_battery[0] = 0;
-    d->peripheral_battery[1] = 0;
-    d->peripheral_battery[2] = 0;
+     * 也不去调 app 侧的函数。
+     *
+     * 26 字节旧协议的电量字段（显示端拉平成 bat[0..3] 四个键盘电量格子）：
+     *   battery_level         -> bat[0]：第 1 格，屏幕上的 L
+     *   peripheral_battery[0] -> bat[1]：第 2 格，屏幕上的 R
+     *   peripheral_battery[1] -> bat[2]：旧协议的第 3 个键盘设备，本机模式不用
+     *   peripheral_battery[2] -> bat[3]：旧协议的第 4 个键盘设备，本机模式不用
+     * 本机（dongle）自身电量不占这 4 格，走 scanner_battery
+     * （ble_scanner_battery_level），显示在屏幕上另一处的 Scanner Battery。
+     */
     d->battery_level = ble_battery_left;
     d->peripheral_battery[0] = ble_battery_right;
+    d->peripheral_battery[1] = 0;
+    d->peripheral_battery[2] = 0;
 
     /* The display layout renders the complete local layer name. This short
      * field is retained for layouts that use the legacy advertisement data. */
