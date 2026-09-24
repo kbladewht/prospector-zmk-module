@@ -565,59 +565,11 @@ config PROSPECTOR_BATTERY_SUPPORT
     help
       Enable battery operation for Prospector scanner device.
       Automatically detects battery presence via device tree.
-      Safe to enable even without battery hardware - will auto-hide if not detected.
-      Displays battery level and charging status in top-right corner.
+      Safe to enable even without battery hardware.
       Automatically enables ZMK_BATTERY_REPORTING.
+      Note: the on-screen "scanner battery" widget was removed - the dongle has no
+      battery of its own, the screen only shows the left/right keyboard batteries.
       Note: USB_DEVICE_STACK must be enabled manually in config file.
-
-config PROSPECTOR_BATTERY_WIDGET_POSITION
-    string "Battery widget screen position"
-    default "TOP_RIGHT"
-    depends on PROSPECTOR_BATTERY_SUPPORT
-    help
-      Screen position for battery status widget.
-      Options: TOP_RIGHT, TOP_LEFT, BOTTOM_RIGHT, BOTTOM_LEFT
-      Default TOP_RIGHT for minimal UI disruption.
-
-config PROSPECTOR_BATTERY_WIDGET_HIDE_WHEN_FULL
-    bool "Hide battery widget when USB powered and fully charged"
-    default n
-    depends on PROSPECTOR_BATTERY_SUPPORT
-    help
-      Hide battery widget when USB connected and battery is 100% charged.
-      Shows charging icon during charging, hides when charging complete.
-      Keeps UI clean when external powered.
-
-config PROSPECTOR_BATTERY_SHOW_PERCENTAGE
-    bool "Show battery percentage text"
-    default y
-    depends on PROSPECTOR_BATTERY_SUPPORT
-    help
-      Show numerical percentage (e.g., "85%") next to battery icon.
-      Disable for minimal UI or space constraints.
-      Icon color coding still indicates battery level.
-
-config PROSPECTOR_BATTERY_DEMO_MODE
-    bool "Enable battery widget demo mode (no hardware required)"
-    default n
-    depends on PROSPECTOR_BATTERY_SUPPORT
-    help
-      Force display battery widget even without battery hardware.
-      Shows demo battery status (75%, USB powered) for UI testing.
-      Useful for testing widget appearance and positioning.
-      DISABLE for production use.
-
-config PROSPECTOR_BATTERY_UPDATE_INTERVAL_S
-    int "Battery status update interval in seconds"
-    range 30 300
-    default 120
-    depends on PROSPECTOR_BATTERY_SUPPORT
-    help
-      How often to refresh battery status from hardware in seconds.
-      Lower values provide more responsive display but use more CPU.
-      Default is 120 seconds (2 minutes). Range is 30 seconds to 5 minutes.
-      Battery events will still trigger immediate updates.
-      Note: This is a fallback mechanism - battery events should provide immediate updates.
 
 # WPM (Words Per Minute) Configuration
 config ZMK_STATUS_ADV_WPM_WINDOW_SECONDS

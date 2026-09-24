@@ -49,8 +49,6 @@ struct pending_display_data {
     int bat[4];
     int8_t rssi;
     float rate_hz;
-    int scanner_battery;
-    bool scanner_battery_pending;
 
     /* Keyboard firmware version (decoded from version + profile_slot fields) */
     uint8_t kb_version_major;

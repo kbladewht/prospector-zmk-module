@@ -9,14 +9,14 @@
  *   scanner_get_pending_update        -> ble_get_pending_update
  *   scanner_is_signal_pending         -> ble_is_signal_pending
  *   scanner_signal_rssi / _rate_x100  -> ble_signal_rssi / ble_signal_rate_x100
- *   scanner_get_pending_battery       -> ble_get_pending_battery
  *   scanner_get_kb_version            -> ble_get_kb_version
  *   scanner_get_selected_keyboard     -> ble_get_selected_keyboard
  *   scanner_set_selected_keyboard     -> ble_set_selected_keyboard
  *   zmk_status_scanner_copy_keyboard  -> ble_copy_keyboard_status
  *   scanner_msg_send_display_refresh  -> ble_msg_send_display_refresh
  *
- * 电量相关（本机电量 + 左右手电量缓存）在 s7789_update_battery.c 里实现。
+ * 电量相关（左右手电量缓存）在 s7789_update_battery.c 里实现：本机（dongle）自身
+ * 电量不再显示，也没有对应接口。
  */
 
 #pragma once
@@ -46,14 +46,6 @@ bool ble_get_pending_update(struct pending_display_data *out);
  * 本机模式没有 RSSI / 速率来源，恒为 false（信号栏保持初始显示）。
  */
 bool ble_is_signal_pending(void);
-
-/**
- * @brief 取本机自身电量变化（顶部右侧电量图标）
- *
- * @param level 输出电量百分比
- * @return true 表示电量有变化
- */
-bool ble_get_pending_battery(int *level);
 
 /**
  * @brief 更新本模块缓存的左右手电量（定义在 s7789_update_battery.c，由 app/src/battery_cb.c 调用）

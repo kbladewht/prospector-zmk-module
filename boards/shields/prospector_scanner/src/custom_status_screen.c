@@ -114,7 +114,6 @@ void display_update_wpm(int wpm);
 void display_update_connection(bool usb_rdy, bool ble_conn, bool ble_bond, int profile);
 void display_update_modifiers(uint8_t mods);
 void display_update_keyboard_battery_4(int bat0, int bat1, int bat2, int bat3);
-void display_update_scanner_battery(int level);
 
 /* Custom slider state for inverted drag handling */
 /* Due to 180° touch panel rotation, LVGL X decreases when user drags right */
@@ -165,7 +164,6 @@ static int wpm_value = 0;
 #define MAX_KB_BATTERIES 4
 static int battery_values[MAX_KB_BATTERIES] = {0, 0, 0, 0};  /* Up to 4 keyboard batteries */
 static int active_battery_count = 0;  /* How many batteries are active (>0) */
-static int scanner_battery = 0;
 static int8_t rssi = -100;  /* Default: very weak signal */
 static float rate_hz = -1.0f;  /* Negative = not yet received, will show as "-.--Hz" */
 static int ble_profile = 0;
@@ -182,7 +180,6 @@ static uint8_t cached_modifiers = 0;
 static char stbuf_rssi[16] = "?";
 static char stbuf_rate[16] = "-.--Hz";
 static char stbuf_wpm[8] = "0";
-static char stbuf_scanner_bat[8] = "?";
 static char stbuf_kb_bat[MAX_KB_BATTERIES][16] = {"0", "0", "0", "0"};
 static char stbuf_transport[48] = "";
 static char stbuf_modifier[64] = "";
@@ -219,10 +216,6 @@ static void set_pwm_brightness(uint8_t brightness) {
 
 /* Device name */
 static lv_obj_t *device_name_label = NULL;
-
-/* Scanner battery */
-static lv_obj_t *scanner_bat_icon = NULL;
-static lv_obj_t *scanner_bat_pct = NULL;
 
 /* WPM */
 static lv_obj_t *wpm_title_label = NULL;
@@ -279,8 +272,6 @@ static lv_obj_t *ds_auto_label = NULL;
 static lv_obj_t *ds_auto_switch = NULL;
 static lv_obj_t *ds_brightness_slider = NULL;
 static lv_obj_t *ds_brightness_value = NULL;
-static lv_obj_t *ds_battery_label = NULL;
-static lv_obj_t *ds_battery_switch = NULL;
 static lv_obj_t *ds_layer_label = NULL;
 static lv_obj_t *ds_layer_slider = NULL;
 static lv_obj_t *ds_layer_value = NULL;
@@ -291,8 +282,6 @@ static lv_obj_t *ds_nav_hint = NULL;
 /* Display Settings State (persists across screen transitions, backed by NVS) */
 /* ds_auto_brightness_enabled is declared near AUTO_BRIGHTNESS_INTERVAL_MS */
 static uint8_t ds_manual_brightness = 65;
-/* Battery visible if CONFIG_PROSPECTOR_BATTERY_SUPPORT=y in config */
-static bool ds_battery_visible = IS_ENABLED(CONFIG_PROSPECTOR_BATTERY_SUPPORT);
 static uint8_t ds_max_layers = 7;
 static bool ds_layer_slide_mode = IS_ENABLED(CONFIG_PROSPECTOR_LAYER_SLIDE_DEFAULT);
 static uint8_t ds_layer_slide_max = 7;
@@ -304,10 +293,9 @@ static void load_display_settings(void) {
     ds_manual_brightness = display_settings_get_manual_brightness();
     ds_max_layers = display_settings_get_max_layers();
     ds_layer_slide_mode = display_settings_get_layer_slide_mode();
-    ds_battery_visible = display_settings_get_battery_visible();
-    LOG_INF("NVS settings loaded: bright=%d/%d%%, layers=%d, slide=%d, batviz=%d",
+    LOG_INF("NVS settings loaded: bright=%d/%d%%, layers=%d, slide=%d",
             ds_auto_brightness_enabled, ds_manual_brightness,
-            ds_max_layers, ds_layer_slide_mode, ds_battery_visible);
+            ds_max_layers, ds_layer_slide_mode);
 
     /* Apply saved brightness setting */
     if (ds_auto_brightness_enabled) {
@@ -457,28 +445,12 @@ static lv_color_t get_slide_layer_color(int layer, int max_layer) {
     return lv_color_make((uint8_t)(r * 255), (uint8_t)(g * 255), (uint8_t)(b * 255));
 }
 
-static lv_color_t get_scanner_battery_color(int level) {
-    if (level >= 80) return lv_color_hex(0x00FF00);
-    else if (level >= 60) return lv_color_hex(0x7FFF00);
-    else if (level >= 40) return lv_color_hex(0xFFFF00);
-    else if (level >= 20) return lv_color_hex(0xFF7F00);
-    else return lv_color_hex(0xFF0000);
-}
-
 static lv_color_t get_keyboard_battery_color(int level) {
     if (level >= 80) return lv_color_hex(0x00CC66);
     else if (level >= 60) return lv_color_hex(0x66CC00);
     else if (level >= 40) return lv_color_hex(0xFFCC00);
     else if (level >= 20) return lv_color_hex(0xFF8800);
     else return lv_color_hex(0xFF3333);
-}
-
-static const char* get_battery_icon(int level) {
-    if (level >= 80) return LV_SYMBOL_BATTERY_FULL;
-    else if (level >= 60) return LV_SYMBOL_BATTERY_3;
-    else if (level >= 40) return LV_SYMBOL_BATTERY_2;
-    else if (level >= 20) return LV_SYMBOL_BATTERY_1;
-    else return LV_SYMBOL_BATTERY_EMPTY;
 }
 
 static uint8_t rssi_to_bars(int8_t rssi_val) {
@@ -640,12 +612,6 @@ static void pending_update_timer_cb(lv_timer_t *timer) {
             lv_label_set_text_static(rate_label, stbuf_rate);
         }
     }
-
-    /* 检查本机自身电量是否有更新 */
-    int scanner_bat;
-    if (ble_get_pending_battery(&scanner_bat)) {
-        display_update_scanner_battery(scanner_bat);
-    }
 }
 
 /* ========== Main Screen Creation (NO CONTAINERS) ========== */
@@ -676,27 +642,7 @@ lv_obj_t *zmk_display_status_screen(void) {
     lv_obj_align(device_name_label, LV_ALIGN_TOP_MID, 0, 25);
     LOG_INF("[INIT] device name created");
 
-    /* ===== 2. Scanner Battery (TOP_RIGHT area) ===== */
-    /* Shows scanner device's own battery level */
-    LOG_INF("[INIT] Creating scanner battery...");
-    scanner_bat_icon = lv_label_create(screen);
-    lv_obj_set_style_text_font(scanner_bat_icon, &lv_font_montserrat_12, 0);
-    lv_obj_set_pos(scanner_bat_icon, 216, 4);  /* 4px right */
-    lv_label_set_text(scanner_bat_icon, LV_SYMBOL_BATTERY_3);  /* Initial: 3/4 battery */
-    lv_obj_set_style_text_color(scanner_bat_icon, lv_color_hex(0x7FFF00), 0);  /* Lime green */
-
-    scanner_bat_pct = lv_label_create(screen);
-    lv_obj_set_style_text_font(scanner_bat_pct, &lv_font_unscii_8, 0);
-    lv_obj_set_pos(scanner_bat_pct, 238, 7);  /* 2px up */
-    lv_label_set_text(scanner_bat_pct, "?");  /* Unknown until battery read */
-    lv_obj_set_style_text_color(scanner_bat_pct, lv_color_hex(0x7FFF00), 0);
-
-    /* Hide battery widget if disabled */
-    if (!ds_battery_visible) {
-        lv_obj_set_style_opa(scanner_bat_icon, 0, 0);
-        lv_obj_set_style_opa(scanner_bat_pct, 0, 0);
-    }
-    LOG_INF("[INIT] scanner battery created (visible=%d)", ds_battery_visible);
+    /* ===== 2. Scanner Battery 已移除：dongle 自身不带电池，只显示左右手 L/R ===== */
 
     /* ===== 3. WPM Widget (TOP_LEFT, centered under title) ===== */
     LOG_INF("[INIT] Creating WPM...");
@@ -961,48 +907,6 @@ void display_update_device_name(const char *name) {
     }
     if (device_name_label && name) {
         lv_label_set_text_static(device_name_label, cached_device_name);
-    }
-}
-
-void display_update_scanner_battery(int level) {
-    scanner_battery = level;
-
-    /* If scanner battery widget is disabled via settings, hide it */
-    if (!ds_battery_visible) {
-        if (scanner_bat_icon) lv_obj_set_style_opa(scanner_bat_icon, 0, 0);
-        if (scanner_bat_pct) lv_obj_set_style_opa(scanner_bat_pct, 0, 0);
-        return;
-    }
-
-    /* Check if USB is connected (= charging) */
-    bool is_charging = false;
-#if IS_ENABLED(CONFIG_USB_DEVICE_STACK)
-    is_charging = zmk_usb_is_powered();
-#endif
-
-    /* Charging: Blue color (0x007FFF), show charge symbol + battery icon */
-    lv_color_t display_color = is_charging ? lv_color_hex(0x007FFF) : get_scanner_battery_color(level);
-
-    if (scanner_bat_icon) {
-        lv_obj_set_style_opa(scanner_bat_icon, 255, 0);  /* Ensure visible */
-        if (is_charging) {
-            /* Show charge symbol + battery icon, move 3px left to accommodate wider icon */
-            static char combined_icon[16];
-            snprintf(combined_icon, sizeof(combined_icon), LV_SYMBOL_CHARGE "%s", get_battery_icon(level));
-            lv_label_set_text_static(scanner_bat_icon, combined_icon);
-            lv_obj_set_pos(scanner_bat_icon, 213, 4);  /* 3px left when charging */
-        } else {
-            lv_label_set_text_static(scanner_bat_icon, get_battery_icon(level));
-            lv_obj_set_pos(scanner_bat_icon, 216, 4);  /* Normal position */
-        }
-        lv_obj_set_style_text_color(scanner_bat_icon, display_color, 0);
-    }
-
-    if (scanner_bat_pct) {
-        lv_obj_set_style_opa(scanner_bat_pct, 255, 0);  /* Ensure visible */
-        snprintf(stbuf_scanner_bat, sizeof(stbuf_scanner_bat), "%d", level);
-        lv_label_set_text_static(scanner_bat_pct, stbuf_scanner_bat);
-        lv_obj_set_style_text_color(scanner_bat_pct, display_color, 0);
     }
 }
 
@@ -1871,8 +1775,6 @@ static void destroy_main_screen_widgets(void) {
     if (transport_label) { lv_obj_del(transport_label); transport_label = NULL; }
     if (wpm_value_label) { lv_obj_del(wpm_value_label); wpm_value_label = NULL; }
     if (wpm_title_label) { lv_obj_del(wpm_title_label); wpm_title_label = NULL; }
-    if (scanner_bat_pct) { lv_obj_del(scanner_bat_pct); scanner_bat_pct = NULL; }
-    if (scanner_bat_icon) { lv_obj_del(scanner_bat_icon); scanner_bat_icon = NULL; }
     if (device_name_label) { lv_obj_del(device_name_label); device_name_label = NULL; }
 
     /* Reset state for proper reinitialization */
@@ -1892,24 +1794,6 @@ static void create_main_screen_widgets(void) {
     lv_obj_set_style_text_color(device_name_label, lv_color_white(), 0);
     lv_label_set_text(device_name_label, "Scanning...");
     lv_obj_align(device_name_label, LV_ALIGN_TOP_MID, 0, 25);
-
-    scanner_bat_icon = lv_label_create(screen_obj);
-    lv_obj_set_style_text_font(scanner_bat_icon, &lv_font_montserrat_12, 0);
-    lv_obj_set_pos(scanner_bat_icon, 216, 4);  /* 4px right */
-    lv_label_set_text(scanner_bat_icon, LV_SYMBOL_BATTERY_3);  /* Initial: 3/4 battery */
-    lv_obj_set_style_text_color(scanner_bat_icon, lv_color_hex(0x7FFF00), 0);
-
-    scanner_bat_pct = lv_label_create(screen_obj);
-    lv_obj_set_style_text_font(scanner_bat_pct, &lv_font_unscii_8, 0);
-    lv_obj_set_pos(scanner_bat_pct, 238, 7);  /* 2px up */
-    lv_label_set_text(scanner_bat_pct, "?");  /* Unknown until battery read */
-    lv_obj_set_style_text_color(scanner_bat_pct, lv_color_hex(0x7FFF00), 0);
-
-    /* Hide battery widget if disabled */
-    if (!ds_battery_visible) {
-        lv_obj_set_style_opa(scanner_bat_icon, 0, 0);
-        lv_obj_set_style_opa(scanner_bat_pct, 0, 0);
-    }
 
     wpm_title_label = lv_label_create(screen_obj);
     lv_obj_set_style_text_font(wpm_title_label, &lv_font_unscii_8, 0);
@@ -2066,7 +1950,6 @@ static void create_main_screen_widgets(void) {
 
     /* Restore all cached values to newly created widgets */
     display_update_device_name(cached_device_name);
-    display_update_scanner_battery(scanner_battery);
     display_update_wpm(wpm_value);
     display_update_connection(usb_ready, ble_connected, ble_bonded, ble_profile);
     display_update_layer(active_layer);
@@ -2319,20 +2202,6 @@ static void ds_brightness_slider_event_cb(lv_event_t *e) {
     LOG_INF("Brightness changed to %d%%", value);
 }
 
-/* Scanner battery switch handler */
-static void ds_battery_switch_event_cb(lv_event_t *e) {
-    lv_event_code_t code = lv_event_get_code(e);
-    if (code != LV_EVENT_VALUE_CHANGED) return;
-
-    lv_obj_t *sw = lv_event_get_target(e);
-    ds_battery_visible = lv_obj_has_state(sw, LV_STATE_CHECKED);
-    display_settings_set_battery_visible(ds_battery_visible);
-    LOG_INF("Scanner battery widget: %s", ds_battery_visible ? "visible" : "hidden");
-
-    /* Immediately update scanner battery widget visibility using cached value */
-    display_update_scanner_battery(scanner_battery);
-}
-
 /* Layer slider handler - value is already correct from custom drag handler */
 static void ds_layer_slider_event_cb(lv_event_t *e) {
     lv_event_code_t code = lv_event_get_code(e);
@@ -2426,8 +2295,6 @@ static void destroy_display_settings_widgets(void) {
     if (ds_layer_value) { lv_obj_del(ds_layer_value); ds_layer_value = NULL; }
     if (ds_layer_slider) { lv_obj_del(ds_layer_slider); ds_layer_slider = NULL; }
     if (ds_layer_label) { lv_obj_del(ds_layer_label); ds_layer_label = NULL; }
-    if (ds_battery_switch) { lv_obj_del(ds_battery_switch); ds_battery_switch = NULL; }
-    if (ds_battery_label) { lv_obj_del(ds_battery_label); ds_battery_label = NULL; }
     if (ds_brightness_value) { lv_obj_del(ds_brightness_value); ds_brightness_value = NULL; }
     if (ds_brightness_slider) { lv_obj_del(ds_brightness_slider); ds_brightness_slider = NULL; }
     if (ds_auto_switch) { lv_obj_del(ds_auto_switch); ds_auto_switch = NULL; }
@@ -2542,37 +2409,7 @@ static void create_display_settings_widgets(void) {
 
     y_pos += 30;  /* Compact spacing */
 
-    /* ===== Battery Section ===== */
-    ds_battery_label = lv_label_create(screen_obj);
-    lv_obj_set_style_text_font(ds_battery_label, &lv_font_montserrat_16, 0);
-    lv_obj_set_style_text_color(ds_battery_label, lv_color_white(), 0);
-    lv_label_set_text(ds_battery_label, "Scanner Battery");
-    lv_obj_set_pos(ds_battery_label, 15, y_pos);
-
-    /* Battery switch */
-    ds_battery_switch = lv_switch_create(screen_obj);
-    lv_obj_set_size(ds_battery_switch, 50, 28);
-    lv_obj_set_pos(ds_battery_switch, 230, y_pos - 3);
-    if (ds_battery_visible) {
-        lv_obj_add_state(ds_battery_switch, LV_STATE_CHECKED);
-    }
-    /* Same iOS styling */
-    lv_obj_set_style_radius(ds_battery_switch, 14, LV_PART_MAIN);
-    lv_obj_set_style_bg_color(ds_battery_switch, lv_color_hex(0x3A3A3C), LV_PART_MAIN);
-    lv_obj_set_style_bg_opa(ds_battery_switch, LV_OPA_COVER, LV_PART_MAIN);
-    lv_obj_set_style_radius(ds_battery_switch, 14, LV_PART_INDICATOR);
-    lv_obj_set_style_bg_color(ds_battery_switch, lv_color_hex(0x34C759), LV_PART_INDICATOR | LV_STATE_CHECKED);
-    lv_obj_set_style_bg_color(ds_battery_switch, lv_color_hex(0x3A3A3C), LV_PART_INDICATOR);
-    lv_obj_set_style_bg_opa(ds_battery_switch, LV_OPA_COVER, LV_PART_INDICATOR);  /* CRITICAL for visibility */
-    lv_obj_set_style_radius(ds_battery_switch, LV_RADIUS_CIRCLE, LV_PART_KNOB);
-    lv_obj_set_style_bg_color(ds_battery_switch, lv_color_white(), LV_PART_KNOB);
-    lv_obj_set_style_bg_opa(ds_battery_switch, LV_OPA_COVER, LV_PART_KNOB);  /* CRITICAL for visibility */
-    lv_obj_set_style_pad_all(ds_battery_switch, -2, LV_PART_KNOB);
-    lv_obj_set_style_border_width(ds_battery_switch, 0, LV_PART_MAIN);
-    lv_obj_set_ext_click_area(ds_battery_switch, 15);  /* Extend tap area for easier touch */
-    lv_obj_add_event_cb(ds_battery_switch, ds_battery_switch_event_cb, LV_EVENT_VALUE_CHANGED, NULL);
-
-    y_pos += 35;  /* Slightly more space before Max Layers */
+    /* ===== Battery Section 已移除：dongle 自身不带电池（只有左右手 L/R） ===== */
 
     /* ===== Max Layers Section ===== */
     ds_layer_label = lv_label_create(screen_obj);
