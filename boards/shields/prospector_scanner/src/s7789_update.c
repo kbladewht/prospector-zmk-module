@@ -60,15 +60,6 @@ LOG_MODULE_DECLARE(zmk, CONFIG_ZMK_LOG_LEVEL);
 /* 采样周期：显示端定时器 100ms 调用一次，这里限制为最快 100ms 采样一次 */
 #define BLE_POLL_INTERVAL_MS 100
 
-/* dongle 的两个分体外设槽位与实际左右手的对应关系。
- * 槽位号由配对顺序决定。实测当前配对：左手 = 槽位 0、右手 = 槽位 1
- * （2026-09-23：若按 0=右手 处理，左手按键会全部落到右手键位、屏幕 R 槽位
- *  显示左手电量）。若以后重新配对后左右互换，交换这两个宏重新编译 dongle
- *  即可，同时记得同步交换 corne_dongle/config.h 里的
- *  QF_PERIPHERAL_SLOT_LEFT/RIGHT。 */
-#define BLE_PERIPHERAL_SOURCE_LEFT 0
-#define BLE_PERIPHERAL_SOURCE_RIGHT 1
-
 /* 显示端用来过滤键盘的运行时频道（定义在 system_settings_widget.c，
  * custom_status_screen.c 里也有一份 weak 兜底实现）。 */
 extern uint8_t scanner_get_runtime_channel(void) __attribute__((weak));
@@ -82,10 +73,6 @@ static volatile bool s_force_update;           /* 强制下一次刷新（屏幕
 static uint32_t s_last_poll_ms;                /* 上次采样时间 */
 static int s_last_battery = -1;                /* 上次上报的本机电量 */
 static int s_selected_keyboard = 0;            /* 本机模式下只有槽位 0 */
-#if IS_ENABLED(CONFIG_ZMK_SPLIT_BLE_CENTRAL_BATTERY_LEVEL_FETCHING)
-static uint8_t s_last_left_battery;  /* 左手最后一次有效电量 */
-static uint8_t s_last_right_battery; /* 右手最后一次有效电量 */
-#endif
 
 volatile int8_t ble_signal_rssi = 0;
 volatile int32_t ble_signal_rate_x100 = -1; /* 负值 => 界面显示 "-.--Hz" */
@@ -142,44 +129,16 @@ static uint8_t ble_local_active_layer(void) {
     return (uint8_t)zmk_keymap_highest_layer_active();
 }
 
-#if IS_ENABLED(CONFIG_ZMK_SPLIT_BLE_CENTRAL_BATTERY_LEVEL_FETCHING)
-/* 读取一只手（split 外设槽位）的电量与在线状态，左右手共用同一套逻辑。
- *
- * 连接状态以 central 的槽位状态为准：
- *  - 槽位未连接：返回 0 并清空缓存，让屏幕如实显示"未连接"，
- *    不会拿最后一次电量冒充在线；
- *  - 槽位已连接但这次读到 0（按键瞬间 Battery Service 的瞬时上报就是这样）：
- *    保留最后一次有效值，避免屏幕误报"断联且无电量"。
- */
-static uint8_t ble_peripheral_battery(uint8_t source, uint8_t *last_good) {
-    const bool connected = zmk_split_central_peripheral_is_connected(source);
-    uint8_t level = 0;
 
-    if (connected) {
-        if (zmk_split_central_get_peripheral_battery_level(source, &level) != 0 ||
-            level == 0) {
-            level = *last_good; /* 瞬时 0（或读取失败）时保留最后一次有效值 */
-        } else {
-            *last_good = level;
-        }
-    } else {
-        *last_good = 0;
-    }
-
-    /* 槽位状态/电量变化时打一条日志，方便对照屏幕核对左右手与槽位的映射 */
-    static uint8_t logged_level[ZMK_SPLIT_CENTRAL_PERIPHERAL_COUNT];
-    static bool logged_connected[ZMK_SPLIT_CENTRAL_PERIPHERAL_COUNT];
-    if (source < ZMK_SPLIT_CENTRAL_PERIPHERAL_COUNT &&
-        (logged_connected[source] != connected || logged_level[source] != level)) {
-        logged_connected[source] = connected;
-        logged_level[source] = level;
-        LOG_INF("split 外设槽位 %u：%s，电量 %u%%", (unsigned int)source,
-                connected ? "已连接" : "未连接", (unsigned int)level);
-    }
-
-    return level;
-}
-#endif
+/* 电量：这里不按槽位取，统一交给 app/src/battery_cb.c 的 read_battery_levels()。
+ * 它会先判断本构建是不是 dongle：
+ *   - dongle：两只手都是外设，靠从机 BLS 上报的 identifier（1 = 左、2 = 右）认手；
+ *   - 非 dongle：左手就是本机，右手是它的外设。
+ * 结果放在 left_battery / right_battery（VIA 电量查询读的也是这两个全局）；
+ * 某只手掉线时对应值会被清零，屏幕据此显示"未连接"。 */
+extern void read_battery_levels(void);
+extern uint8_t left_battery;
+extern uint8_t right_battery;
 
 /* 把本机状态填进原来的 26 字节数据结构（字段布局与旧协议保持一致） */
 static void ble_fill_adv_data(struct zmk_status_adv_data *d) {
@@ -237,16 +196,15 @@ bool ble_bonded = false;
 
     /* 左右手电量：左手 -> battery_level（显示端 "L" 槽位），
      * 右手 -> peripheral_battery[0]（显示端 "R" 槽位）。
-     * 两只手共用 ble_peripheral_battery()：槽位在线就上报电量（瞬时 0 时保留
-     * 最后一次有效值），槽位真正断开就清零，让界面显示未连接。 */
+     * 取法和 VIA 电量查询完全一致：交给 app 侧的 read_battery_levels()
+     * （它自己判断 dongle/非 dongle 模式，并用从机 BLS identifier 认手），
+     * 这里只读结果，不碰槽位和 identifier。 */
     d->peripheral_battery[0] = 0;
     d->peripheral_battery[1] = 0;
     d->peripheral_battery[2] = 0;
-#if IS_ENABLED(CONFIG_ZMK_SPLIT_BLE_CENTRAL_BATTERY_LEVEL_FETCHING)
-    d->battery_level = ble_peripheral_battery(BLE_PERIPHERAL_SOURCE_LEFT, &s_last_left_battery);
-    d->peripheral_battery[0] =
-        ble_peripheral_battery(BLE_PERIPHERAL_SOURCE_RIGHT, &s_last_right_battery);
-#endif
+    read_battery_levels();
+    d->battery_level = left_battery;
+    d->peripheral_battery[0] = right_battery;
 
     /* The display layout renders the complete local layer name. This short
      * field is retained for layouts that use the legacy advertisement data. */
