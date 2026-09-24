@@ -17,7 +17,12 @@
  * ----
  * 1. 本机模式没有 RSSI / 速率来源，ble_is_signal_pending() 恒为 false。
  * 2. 只有"槽位 0"（本机自己）这一台设备。
- * 3. 所有函数都在显示线程（LVGL 定时器，100ms 一次）上下文被调用。
+ * 3. 左右手的电量 / 连接状态来自 split central 的两个外设槽位：
+ *      battery_level        -> 显示端 "L" 槽位（左手）
+ *      peripheral_battery[0]-> 显示端 "R" 槽位（右手）
+ *    本机（dongle）自身电量不再占用这两个槽位，只用于经典界面右上角的
+ *    "接收端电量"（ble_get_pending_battery）。
+ * 4. 所有函数都在显示线程（LVGL 定时器，100ms 一次）上下文被调用。
  */
 
 #include <zephyr/kernel.h>
@@ -55,6 +60,15 @@ LOG_MODULE_DECLARE(zmk, CONFIG_ZMK_LOG_LEVEL);
 /* 采样周期：显示端定时器 100ms 调用一次，这里限制为最快 100ms 采样一次 */
 #define BLE_POLL_INTERVAL_MS 100
 
+/* dongle 的两个分体外设槽位与实际左右手的对应关系。
+ * 槽位号由配对顺序决定。实测当前配对：左手 = 槽位 0、右手 = 槽位 1
+ * （2026-09-23：若按 0=右手 处理，左手按键会全部落到右手键位、屏幕 R 槽位
+ *  显示左手电量）。若以后重新配对后左右互换，交换这两个宏重新编译 dongle
+ *  即可，同时记得同步交换 corne_dongle/config.h 里的
+ *  QF_PERIPHERAL_SLOT_LEFT/RIGHT。 */
+#define BLE_PERIPHERAL_SOURCE_LEFT 0
+#define BLE_PERIPHERAL_SOURCE_RIGHT 1
+
 /* 显示端用来过滤键盘的运行时频道（定义在 system_settings_widget.c，
  * custom_status_screen.c 里也有一份 weak 兜底实现）。 */
 extern uint8_t scanner_get_runtime_channel(void) __attribute__((weak));
@@ -69,7 +83,8 @@ static uint32_t s_last_poll_ms;                /* 上次采样时间 */
 static int s_last_battery = -1;                /* 上次上报的本机电量 */
 static int s_selected_keyboard = 0;            /* 本机模式下只有槽位 0 */
 #if IS_ENABLED(CONFIG_ZMK_SPLIT_BLE_CENTRAL_BATTERY_LEVEL_FETCHING)
-static uint8_t s_last_right_battery;
+static uint8_t s_last_left_battery;  /* 左手最后一次有效电量 */
+static uint8_t s_last_right_battery; /* 右手最后一次有效电量 */
 #endif
 
 volatile int8_t ble_signal_rssi = 0;
@@ -127,6 +142,45 @@ static uint8_t ble_local_active_layer(void) {
     return (uint8_t)zmk_keymap_highest_layer_active();
 }
 
+#if IS_ENABLED(CONFIG_ZMK_SPLIT_BLE_CENTRAL_BATTERY_LEVEL_FETCHING)
+/* 读取一只手（split 外设槽位）的电量与在线状态，左右手共用同一套逻辑。
+ *
+ * 连接状态以 central 的槽位状态为准：
+ *  - 槽位未连接：返回 0 并清空缓存，让屏幕如实显示"未连接"，
+ *    不会拿最后一次电量冒充在线；
+ *  - 槽位已连接但这次读到 0（按键瞬间 Battery Service 的瞬时上报就是这样）：
+ *    保留最后一次有效值，避免屏幕误报"断联且无电量"。
+ */
+static uint8_t ble_peripheral_battery(uint8_t source, uint8_t *last_good) {
+    const bool connected = zmk_split_central_peripheral_is_connected(source);
+    uint8_t level = 0;
+
+    if (connected) {
+        if (zmk_split_central_get_peripheral_battery_level(source, &level) != 0 ||
+            level == 0) {
+            level = *last_good; /* 瞬时 0（或读取失败）时保留最后一次有效值 */
+        } else {
+            *last_good = level;
+        }
+    } else {
+        *last_good = 0;
+    }
+
+    /* 槽位状态/电量变化时打一条日志，方便对照屏幕核对左右手与槽位的映射 */
+    static uint8_t logged_level[ZMK_SPLIT_CENTRAL_PERIPHERAL_COUNT];
+    static bool logged_connected[ZMK_SPLIT_CENTRAL_PERIPHERAL_COUNT];
+    if (source < ZMK_SPLIT_CENTRAL_PERIPHERAL_COUNT &&
+        (logged_connected[source] != connected || logged_level[source] != level)) {
+        logged_connected[source] = connected;
+        logged_level[source] = level;
+        LOG_INF("split 外设槽位 %u：%s，电量 %u%%", (unsigned int)source,
+                connected ? "已连接" : "未连接", (unsigned int)level);
+    }
+
+    return level;
+}
+#endif
+
 /* 把本机状态填进原来的 26 字节数据结构（字段布局与旧协议保持一致） */
 static void ble_fill_adv_data(struct zmk_status_adv_data *d) {
     memset(d, 0, sizeof(*d));
@@ -139,11 +193,10 @@ static void ble_fill_adv_data(struct zmk_status_adv_data *d) {
 
     d->version = PROSPECTOR_ENCODE_VERSION();
 
-    uint8_t soc = 0;
-#if IS_ENABLED(CONFIG_ZMK_BATTERY_REPORTING)
-    soc = zmk_battery_state_of_charge();
-#endif
-    d->battery_level = soc;
+    /* 电量字段在显示端按手分配：battery_level = "L"（左手），
+     * peripheral_battery[0] = "R"（右手）。本机（dongle）自身电量不占这两个
+     * 槽位，先清零，稍后由 split 外设数据填充（见下方"左右手电量"）。 */
+    d->battery_level = 0;
 
     const uint8_t layer_index = ble_local_active_layer();
     d->active_layer = layer_index;
@@ -182,24 +235,17 @@ bool ble_bonded = false;
     d->device_role = ZMK_DEVICE_ROLE_STANDALONE;
     d->device_index = 0;
 
-    /* 分体副手（右手）电量：source=0 对应显示端的 "R" 槽位。
-     * 右手按键仍可用时，Battery Service 可能暂时返回 0；这不代表 split
-     * 链路断开，因此连接槽位仍存活时保留最后一次有效电量。 */
+    /* 左右手电量：左手 -> battery_level（显示端 "L" 槽位），
+     * 右手 -> peripheral_battery[0]（显示端 "R" 槽位）。
+     * 两只手共用 ble_peripheral_battery()：槽位在线就上报电量（瞬时 0 时保留
+     * 最后一次有效值），槽位真正断开就清零，让界面显示未连接。 */
     d->peripheral_battery[0] = 0;
     d->peripheral_battery[1] = 0;
     d->peripheral_battery[2] = 0;
 #if IS_ENABLED(CONFIG_ZMK_SPLIT_BLE_CENTRAL_BATTERY_LEVEL_FETCHING)
-    uint8_t right_battery = 0;
-    if (zmk_split_central_get_peripheral_battery_level(0, &right_battery) == 0) {
-        if (right_battery > 0) {
-            s_last_right_battery = right_battery;
-        } else if (zmk_split_central_peripheral_is_connected(0)) {
-            right_battery = s_last_right_battery;
-        } else {
-            s_last_right_battery = 0;
-        }
-        d->peripheral_battery[0] = right_battery;
-    }
+    d->battery_level = ble_peripheral_battery(BLE_PERIPHERAL_SOURCE_LEFT, &s_last_left_battery);
+    d->peripheral_battery[0] =
+        ble_peripheral_battery(BLE_PERIPHERAL_SOURCE_RIGHT, &s_last_right_battery);
 #endif
 
     /* The display layout renders the complete local layer name. This short
@@ -265,10 +311,15 @@ static bool ble_poll_local_state(void) {
     /* 本机自己就是数据源，永远有数据，不会出现"全部键盘超时" */
     next.no_keyboards = false;
 
-    /* 信号无来源；"接收端自身电量"就是本机电量 */
+    /* 信号无来源；"接收端自身电量"就是本机（dongle）自己的电量
+     * （adv.battery_level 现在是左手电量，不能再当接收端电量用） */
     next.rssi = 0;
     next.rate_hz = 0.0f;
-    next.scanner_battery = adv.battery_level;
+    int soc = 0;
+#if IS_ENABLED(CONFIG_ZMK_BATTERY_REPORTING)
+    soc = zmk_battery_state_of_charge();
+#endif
+    next.scanner_battery = soc;
     next.scanner_battery_pending = false;
     next.signal_update_pending = false;
     next.update_pending = false;

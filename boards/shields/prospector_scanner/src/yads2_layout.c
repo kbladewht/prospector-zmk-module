@@ -82,10 +82,11 @@ LV_FONT_DECLARE(lv_font_montserrat_28);
 /* NerdFont 修饰键行，在层滚筒下方 */
 #define YADS2_MOD_Y 160
 
-/* 底部：电量行（始终显示，未收到数据时用 50% 占位）
- * 每只键盘/手一条："<L|R> <电量>%"，下面是进度条。
- * 键盘把左半放在 battery_level、右半放在 peripheral_battery[0]
- * （见 status_advertisement.c），所以分体键盘显示 L、R 两条。 */
+/* 底部：电量行（始终显示两格）
+ * 每只手一条："<L|R> <电量>%"，下面是进度条。
+ * 数据源把左手放在 battery_level（槽 0）、右手放在 peripheral_battery[0]
+ * （槽 1，见 s7789_update.c / status_advertisement.c），所以显示 L、R 两条；
+ * 断开或没有有效读数的那只手显示红色 "--"，不会回退到占位电量。 */
 #define YADS2_BATTERY_ROW_WIDTH 268
 #define YADS2_BATTERY_ROW_HEIGHT 40
 #define YADS2_BATTERY_ROW_Y_OFFSET (-2)
@@ -95,7 +96,8 @@ LV_FONT_DECLARE(lv_font_montserrat_28);
 #define YADS2_BATTERY_BAR_MAX_WIDTH 130
 #define YADS2_BATTERY_BAR_MIN_WIDTH 52
 #define YADS2_BATTERY_BAR_GAP 18
-/* 某槽位还没上报电量时显示的占位值；改成 0 则回到 "--" 样式 */
+/* 还没有键盘名（数据源完全没数据）时，两角的手状态先用"已连接"预览；
+ * 电量槽位本身一律如实显示，不再用占位电量。 */
 #define YADS2_BATTERY_PLACEHOLDER_LEVEL 50
 
 /* 还没有键盘数据时先预览的槽位数（2 = 分体左右两半的样子） */
@@ -273,16 +275,9 @@ static void yads2_render_battery_slot(int slot) {
 
     struct yads2_battery_slot *w = &battery_slots[slot];
     bool have_level = slot_connected[slot] && slot_levels[slot] > 0;
-    /* 槽 0（本机）在还没收到电量时用占位值撑住版式；外设槽位断开后必须如实显示
-     * 断开状态，不能再退回占位电量，否则看起来像是电量一直卡在 50%。 */
-    uint8_t level;
-    if (have_level) {
-        level = slot_levels[slot];
-    } else if (slot == 0) {
-        level = (uint8_t)YADS2_BATTERY_PLACEHOLDER_LEVEL;
-    } else {
-        level = 0;
-    }
+    /* 所有槽位（槽 0 = 左手、槽 1 = 右手……）都如实显示：没有有效读数就是红色
+     * "--"，不再回退到占位电量，否则没连接的手看起来像是一直有 50% 电量。 */
+    uint8_t level = have_level ? slot_levels[slot] : 0;
 
     /* 红绿灯：>50% 绿色，11..50% 琥珀色，<=10% 或无数据显示红色 */
     uint32_t state_color, track_color;
@@ -678,10 +673,10 @@ void yads2_layout_update(uint8_t active_layer, const char *layer_name,
     const char *name = (keyboard_name != NULL) ? keyboard_name : "";
     bool have_keyboard = (name[0] != '\0');
 
-    /* 电量槽位：槽 0 = 键盘本体，其后是每个有上报数据的外设。
-     * 无论有没有外设数据，都至少保留 L + R 两格，保持"左右两组"的版式；
-     * 没有数据的格子按占位电量（50%）显示，接上真正的外设后会自动变多。
-     * 还没检测到键盘时同样先预览 L + R 布局。 */
+    /* 电量槽位：槽 0 = 左手（battery_level）、槽 1 = 右手（peripheral_battery[0]），
+     * 之后还有外设时再加格子。
+     * 无论外设是否在线都至少保留 L + R 两格，保持"左右两组"的版式；
+     * 没有数据的格子如实显示断开（红色 "--"），接上后会自动变多。 */
     int count = YADS2_BATTERY_DEFAULT_SLOTS;
     if (have_keyboard) {
         for (int i = 0; i < YADS2_MAX_PERIPHERALS; i++) {
@@ -702,8 +697,7 @@ void yads2_layout_update(uint8_t active_layer, const char *layer_name,
         cached_valid = false; /* 槽位数量变了，重新渲染整行的文字/颜色 */
     }
 
-    /* 检测到键盘之前电量行也保持显示：没有数据的槽位显示占位电量（50%），
-     * 而不是空着半边 */
+    /* 还没收到任何数据时电量行也保持显示：格子照常占位，值显示为 "--" */
 
     /* 键盘名 */
     if (!cached_valid || strncmp(name, cached_keyboard_name, sizeof(cached_keyboard_name)) != 0) {
