@@ -10,6 +10,10 @@
  *      左右手电量缓存，由 app/src/battery_cb.c 刷新后推过来（模块不反向依赖 app 的
  *      函数），显示端在 s7789_update.c 的 ble_fill_adv_data() 里读这份缓存。
  *
+ * 注意：第 1、2 项是旧"接收端电量"通道留下的接口，本机（dongle）没有电池、
+ * 界面上也只显示左右手两格，该通道默认关闭（CONFIG_PROSPECTOR_BATTERY_SUPPORT
+ * 未启用）；本模块真正在用的是第 3 项（左右手缓存）。
+ *
  * 这里不碰 split / BLS：哪只手是哪只手（dongle 靠从机 BLS 上报的 Battery Identifier
  * 认手）由 app 侧判断好再推过来。
  */

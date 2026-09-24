@@ -20,9 +20,10 @@
  * 3. 电量（本机电量 + 左右手缓存）都在 s7789_update_battery.c 里，本文件只读缓存：
  *      ble_battery_left  -> battery_level         -> 显示端 "L" 槽位（左手）
  *      ble_battery_right -> peripheral_battery[0] -> 显示端 "R" 槽位（右手）
- *    左右手由 app/src/battery_cb.c 刷新后调用 ble_battery_update() 推过来；
- *    本机（dongle）自身电量不占用这两个槽位，只用于经典界面右上角的
- *    "接收端电量"（ble_get_pending_battery / ble_scanner_battery_level）。
+ *    左右手由 app/src/battery_cb.c 刷新后调用 ble_battery_update() 推过来。
+ *    本机（dongle）自己没电池，界面上就只有左右手两格；旧代码里的"接收端电量"
+ *    通道（ble_get_pending_battery / ble_scanner_battery_level）默认关闭
+ *    （CONFIG_PROSPECTOR_BATTERY_SUPPORT 未启用），这里不涉及。
  * 4. 所有读取函数都在显示线程（LVGL 定时器，100ms 一次）上下文被调用。
  */
 
@@ -186,8 +187,7 @@ bool ble_bonded = false;
      *   peripheral_battery[0] -> bat[1]：第 2 格，屏幕上的 R
      * 旧协议里代表第 3、4 个键盘设备的 peripheral_battery[1] / [2] 本机用不到，
      * 这里不赋值（memset 已清零，显示端按 0 = 无数据处理）。
-     * 本机（dongle）自身电量也不占这些格子，走 scanner_battery
-     * （ble_scanner_battery_level），显示在屏幕上另一处的 Scanner Battery。
+     * 本机（dongle）自己没电池、也只有左右手两台设备：界面上就是 L、R 两格。
      */
     d->battery_level = ble_battery_left;
     d->peripheral_battery[0] = ble_battery_right;

@@ -57,8 +57,9 @@ bool ble_get_pending_battery(int *level);
  * @brief 取本机（接收端）自身电量
  *
  * 定义在 s7789_update_battery.c。用于状态快照的 scanner_battery 字段
- * （经典界面显示"接收端电量"）；与 ble_get_pending_battery() 的区别是
- * 这里不做变化检测，直接返回当前值。
+ * （经典界面右上角的"接收端电量"读数，默认关闭：CONFIG_PROSPECTOR_BATTERY_SUPPORT
+ * 未启用，本机 dongle 也没有电池，界面上实际只有左右手两格）。
+ * 与 ble_get_pending_battery() 的区别是这里不做变化检测，直接返回当前值。
  */
 uint8_t ble_scanner_battery_level(void);
 
