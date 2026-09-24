@@ -27,6 +27,8 @@
 
 /* struct pending_display_data 的唯一定义处，禁止在本文件重复定义 */
 #include <zmk/scanner_core.h>
+/* struct zmk_status_adv_data（26 字节广告数据结构，hook 参数用） */
+#include <zmk/status_advertisement.h>
 /* struct zmk_keyboard_status（多键盘列表界面使用） */
 #include <zmk/status_scanner.h>
 
@@ -54,16 +56,6 @@ bool ble_is_signal_pending(void);
 bool ble_get_pending_battery(int *level);
 
 /**
- * @brief 取本机（接收端）自身电量
- *
- * 定义在 s7789_update_battery.c。用于状态快照的 scanner_battery 字段
- * （经典界面右上角的"接收端电量"读数，默认关闭：CONFIG_PROSPECTOR_BATTERY_SUPPORT
- * 未启用，本机 dongle 也没有电池，界面上实际只有左右手两格）。
- * 与 ble_get_pending_battery() 的区别是这里不做变化检测，直接返回当前值。
- */
-uint8_t ble_scanner_battery_level(void);
-
-/**
  * @brief 更新本模块缓存的左右手电量（定义在 s7789_update_battery.c，由 app/src/battery_cb.c 调用）
  *
  * 显示端只认自己这份缓存：模块提供入口 + 缓存，不反向 extern app 侧的函数。
@@ -77,6 +69,20 @@ uint8_t ble_scanner_battery_level(void);
  * @param right 右手电量（显示端 "R" 槽位）
  */
 void ble_battery_update(uint8_t left, uint8_t right);
+
+/**
+ * @brief hook：左右手电量 -> 26 字节结构（s7789_update.c 的 ble_fill_adv_data() 调用）
+ *
+ * 定义在 s7789_update_battery.c；调用方传入的 d 已 memset。
+ */
+void ble_battery_fill_adv_data(struct zmk_status_adv_data *d);
+
+/**
+ * @brief hook：电量字段 -> 显示快照（s7789_update.c 的 ble_poll_local_state() 调用）
+ *
+ * 定义在 s7789_update_battery.c；调用方传入的 out 已 memset。
+ */
+void ble_battery_fill_snapshot(struct pending_display_data *out);
 
 /**
  * @brief 取"键盘"（本机）固件版本信息
@@ -106,7 +112,5 @@ int ble_msg_send_display_refresh(void);
 extern volatile int8_t ble_signal_rssi;
 extern volatile int32_t ble_signal_rate_x100;
 
-/* 左右手电量缓存（定义在 s7789_update_battery.c，由 app/src/battery_cb.c 通过
- * ble_battery_update() 写入；s7789_update.c 只读这份值）0 = 未连接 / 未知 */
-extern volatile uint8_t ble_battery_left;  /* 左手电量（显示端 "L" 槽位） */
-extern volatile uint8_t ble_battery_right; /* 右手电量（显示端 "R" 槽位） */
+/* 左右手电量缓存改由 s7789_update_battery.c 内部 static 持有，外部只能通过
+ * ble_battery_update()（写）和两个 hook（读）访问，0 = 未连接 / 未知 */

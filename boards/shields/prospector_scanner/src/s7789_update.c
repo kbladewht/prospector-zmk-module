@@ -17,13 +17,11 @@
  * ----
  * 1. 本机模式没有 RSSI / 速率来源，ble_is_signal_pending() 恒为 false。
  * 2. 只有"槽位 0"（本机自己）这一台设备。
- * 3. 电量（本机电量 + 左右手缓存）都在 s7789_update_battery.c 里，本文件只读缓存：
- *      ble_battery_left  -> battery_level         -> 显示端 "L" 槽位（左手）
- *      ble_battery_right -> peripheral_battery[0] -> 显示端 "R" 槽位（右手）
- *    左右手由 app/src/battery_cb.c 刷新后调用 ble_battery_update() 推过来。
- *    本机（dongle）自己没电池，界面上就只有左右手两格；旧代码里的"接收端电量"
- *    通道（ble_get_pending_battery / ble_scanner_battery_level）默认关闭
- *    （CONFIG_PROSPECTOR_BATTERY_SUPPORT 未启用），这里不涉及。
+ * 3. 电量全部在 s7789_update_battery.c 里（缓存 + 字段映射），本文件只有两个
+ *    hook 调用点，字段怎么填、哪些槽位不用，都在那边：
+ *      ble_fill_adv_data()    -> ble_battery_fill_adv_data(d)
+ *      ble_poll_local_state() -> ble_battery_fill_snapshot(&next)
+ *    左右手电量由 app/src/battery_cb.c 刷新后调用 ble_battery_update() 推过来。
  * 4. 所有读取函数都在显示线程（LVGL 定时器，100ms 一次）上下文被调用。
  */
 
@@ -137,7 +135,7 @@ static void ble_fill_adv_data(struct zmk_status_adv_data *d) {
 
     d->version = PROSPECTOR_ENCODE_VERSION();
 
-    /* 电量字段统一在下方"左右手电量"处填充（本机自身电量不占键盘电量格子） */
+    /* 电量字段由下面的 hook 填充（实现在 s7789_update_battery.c） */
 
     const uint8_t layer_index = ble_local_active_layer();
     d->active_layer = layer_index;
@@ -176,21 +174,8 @@ bool ble_bonded = false;
     d->device_role = ZMK_DEVICE_ROLE_STANDALONE;
     d->device_index = 0;
 
-    /* 左右手电量：左手 -> battery_level（显示端 "L" 槽位），
-     * 右手 -> peripheral_battery[0]（显示端 "R" 槽位）。
-     * 只读 s7789_update_battery.c 里那份缓存（app/src/battery_cb.c 定时刷新后
-     * 通过 ble_battery_update() 推过来）：显示端不碰槽位 / identifier，
-     * 也不去调 app 侧的函数。
-     *
-     * 26 字节旧协议的电量字段（显示端拉平成 bat[0..3]，本机只填前两格）：
-     *   battery_level         -> bat[0]：第 1 格，屏幕上的 L
-     *   peripheral_battery[0] -> bat[1]：第 2 格，屏幕上的 R
-     * 旧协议里代表第 3、4 个键盘设备的 peripheral_battery[1] / [2] 本机用不到，
-     * 这里不赋值（memset 已清零，显示端按 0 = 无数据处理）。
-     * 本机（dongle）自己没电池、也只有左右手两台设备：界面上就是 L、R 两格。
-     */
-    d->battery_level = ble_battery_left;
-    d->peripheral_battery[0] = ble_battery_right;
+    /* 电量字段（左右手 -> 协议槽位的映射）都在 s7789_update_battery.c 里 */
+    ble_battery_fill_adv_data(d);
 
     /* The display layout renders the complete local layer name. This short
      * field is retained for layouts that use the legacy advertisement data. */
@@ -236,9 +221,8 @@ static bool ble_poll_local_state(void) {
     memcpy(next.layer_name, adv.layer_name, sizeof(adv.layer_name));
     next.wpm = adv.wpm_value;
     next.modifiers = adv.modifier_flags;
-    /* 本机只有左右手两台设备：bat[0]/bat[1] 有值，bat[2]/bat[3] 保持 0（前面已 memset） */
-    next.bat[0] = adv.battery_level;
-    next.bat[1] = adv.peripheral_battery[0];
+    /* 电量字段（bat[0]/bat[1] + 本机自身电量）同样由 s7789_update_battery.c 填 */
+    ble_battery_fill_snapshot(&next);
     next.usb_ready = (adv.status_flags & ZMK_STATUS_FLAG_USB_HID_READY) != 0;
     next.ble_connected = (adv.status_flags & ZMK_STATUS_FLAG_BLE_CONNECTED) != 0;
     next.ble_bonded = (adv.status_flags & ZMK_STATUS_FLAG_BLE_BONDED) != 0;
@@ -254,12 +238,9 @@ static bool ble_poll_local_state(void) {
     /* 本机自己就是数据源，永远有数据，不会出现"全部键盘超时" */
     next.no_keyboards = false;
 
-    /* 信号无来源；"接收端自身电量"就是本机（dongle）自己的电量
-     * （adv.battery_level 现在是左手电量，不能再当接收端电量用） */
+    /* 信号无来源（本机模式没有对端） */
     next.rssi = 0;
     next.rate_hz = 0.0f;
-    next.scanner_battery = ble_scanner_battery_level();
-    next.scanner_battery_pending = false;
     next.signal_update_pending = false;
     next.update_pending = false;
 
