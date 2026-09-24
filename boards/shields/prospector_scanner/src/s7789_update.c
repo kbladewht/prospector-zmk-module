@@ -17,12 +17,14 @@
  * ----
  * 1. 本机模式没有 RSSI / 速率来源，ble_is_signal_pending() 恒为 false。
  * 2. 只有"槽位 0"（本机自己）这一台设备。
- * 3. 左右手的电量 / 连接状态来自 split central 的两个外设槽位：
- *      battery_level        -> 显示端 "L" 槽位（左手）
- *      peripheral_battery[0]-> 显示端 "R" 槽位（右手）
- *    本机（dongle）自身电量不再占用这两个槽位，只用于经典界面右上角的
+ * 3. 左右手电量由本文件自己缓存一份（s_battery_left / s_battery_right），
+ *    由 app/src/battery_cb.c 刷新后调用 ble_battery_update() 推过来：
+ *      left  -> battery_level         -> 显示端 "L" 槽位（左手）
+ *      right -> peripheral_battery[0] -> 显示端 "R" 槽位（右手）
+ *    本机（dongle）自身电量不占用这两个槽位，只用于经典界面右上角的
  *    "接收端电量"（ble_get_pending_battery）。
- * 4. 所有函数都在显示线程（LVGL 定时器，100ms 一次）上下文被调用。
+ * 4. 所有读取函数都在显示线程（LVGL 定时器，100ms 一次）上下文被调用；
+ *    ble_battery_update() 在系统工作队列（app/src/battery_cb.c 的定时刷新）里被调用。
  */
 
 #include <zephyr/kernel.h>
@@ -50,9 +52,6 @@
 #endif
 #if IS_ENABLED(CONFIG_ZMK_WPM)
 #include <zmk/wpm.h>
-#endif
-#if IS_ENABLED(CONFIG_ZMK_SPLIT_BLE_CENTRAL_BATTERY_LEVEL_FETCHING)
-#include <zmk/split/central.h>
 #endif
 
 LOG_MODULE_DECLARE(zmk, CONFIG_ZMK_LOG_LEVEL);
@@ -130,15 +129,19 @@ static uint8_t ble_local_active_layer(void) {
 }
 
 
-/* 电量：这里不按槽位取，统一交给 app/src/battery_cb.c 的 read_battery_levels()。
- * 它会先判断本构建是不是 dongle：
+/* 电量：显示端自己缓存一份（左右手各一个），由 app/src/battery_cb.c 刷新后
+ * 调用 ble_battery_update() 写入 —— 模块不反向 extern app 的函数。
+ * app 侧负责判断本构建是不是 dongle：
  *   - dongle：两只手都是外设，靠从机 BLS 上报的 identifier（1 = 左、2 = 右）认手；
  *   - 非 dongle：左手就是本机，右手是它的外设。
- * 结果放在 left_battery / right_battery（VIA 电量查询读的也是这两个全局）；
- * 某只手掉线时对应值会被清零，屏幕据此显示"未连接"。 */
-extern void read_battery_levels(void);
-extern uint8_t left_battery;
-extern uint8_t right_battery;
+ * 某只手掉线时 app 会把对应值清零，屏幕据此显示"未连接"。 */
+static volatile uint8_t s_battery_left;
+static volatile uint8_t s_battery_right;
+
+void ble_battery_update(uint8_t left, uint8_t right) {
+    s_battery_left = left;
+    s_battery_right = right;
+}
 
 /* 把本机状态填进原来的 26 字节数据结构（字段布局与旧协议保持一致） */
 static void ble_fill_adv_data(struct zmk_status_adv_data *d) {
@@ -154,7 +157,7 @@ static void ble_fill_adv_data(struct zmk_status_adv_data *d) {
 
     /* 电量字段在显示端按手分配：battery_level = "L"（左手），
      * peripheral_battery[0] = "R"（右手）。本机（dongle）自身电量不占这两个
-     * 槽位，先清零，稍后由 split 外设数据填充（见下方"左右手电量"）。 */
+     * 槽位，先清零，稍后由 app 推过来的缓存填充（见下方"左右手电量"）。 */
     d->battery_level = 0;
 
     const uint8_t layer_index = ble_local_active_layer();
@@ -196,15 +199,14 @@ bool ble_bonded = false;
 
     /* 左右手电量：左手 -> battery_level（显示端 "L" 槽位），
      * 右手 -> peripheral_battery[0]（显示端 "R" 槽位）。
-     * 取法和 VIA 电量查询完全一致：交给 app 侧的 read_battery_levels()
-     * （它自己判断 dongle/非 dongle 模式，并用从机 BLS identifier 认手），
-     * 这里只读结果，不碰槽位和 identifier。 */
+     * 只读本文件缓存的那份（app/src/battery_cb.c 定时刷新后通过
+     * ble_battery_update() 推过来）：显示端不碰槽位 / identifier，
+     * 也不去调 app 侧的函数。 */
     d->peripheral_battery[0] = 0;
     d->peripheral_battery[1] = 0;
     d->peripheral_battery[2] = 0;
-    read_battery_levels();
-    d->battery_level = left_battery;
-    d->peripheral_battery[0] = right_battery;
+    d->battery_level = s_battery_left;
+    d->peripheral_battery[0] = s_battery_right;
 
     /* The display layout renders the complete local layer name. This short
      * field is retained for layouts that use the legacy advertisement data. */

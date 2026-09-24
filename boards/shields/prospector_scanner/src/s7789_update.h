@@ -52,6 +52,21 @@ bool ble_is_signal_pending(void);
 bool ble_get_pending_battery(int *level);
 
 /**
+ * @brief 更新本模块缓存的左右手电量（由 app/src/battery_cb.c 调用）
+ *
+ * 显示端只认自己这份缓存：模块提供入口 + 缓存，不反向 extern app 侧的函数。
+ * "哪只手是哪只手"（dongle 模式下靠从机 BLS 上报的 Battery Identifier 认手）
+ * 由 app 侧判断好后再推过来。0 表示未连接 / 未知，界面据此显示"未连接"。
+ *
+ * 调用上下文：系统工作队列（app 侧定时刷新）；两个字节各自原子写入，
+ * 极端情况下界面可能出现一帧新旧混合，下一次刷新（1s 内）即一致。
+ *
+ * @param left  左手电量（显示端 "L" 槽位）
+ * @param right 右手电量（显示端 "R" 槽位）
+ */
+void ble_battery_update(uint8_t left, uint8_t right);
+
+/**
  * @brief 取"键盘"（本机）固件版本信息
  *
  * 本机模式下返回的是本机固件版本与键盘名。
