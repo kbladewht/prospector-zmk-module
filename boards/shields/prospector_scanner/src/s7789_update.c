@@ -17,14 +17,13 @@
  * ----
  * 1. 本机模式没有 RSSI / 速率来源，ble_is_signal_pending() 恒为 false。
  * 2. 只有"槽位 0"（本机自己）这一台设备。
- * 3. 左右手电量由本文件自己缓存一份（s_battery_left / s_battery_right），
- *    由 app/src/battery_cb.c 刷新后调用 ble_battery_update() 推过来：
- *      left  -> battery_level         -> 显示端 "L" 槽位（左手）
- *      right -> peripheral_battery[0] -> 显示端 "R" 槽位（右手）
+ * 3. 电量（本机电量 + 左右手缓存）都在 s7789_update_battery.c 里，本文件只读缓存：
+ *      ble_battery_left  -> battery_level         -> 显示端 "L" 槽位（左手）
+ *      ble_battery_right -> peripheral_battery[0] -> 显示端 "R" 槽位（右手）
+ *    左右手由 app/src/battery_cb.c 刷新后调用 ble_battery_update() 推过来；
  *    本机（dongle）自身电量不占用这两个槽位，只用于经典界面右上角的
- *    "接收端电量"（ble_get_pending_battery）。
- * 4. 所有读取函数都在显示线程（LVGL 定时器，100ms 一次）上下文被调用；
- *    ble_battery_update() 在系统工作队列（app/src/battery_cb.c 的定时刷新）里被调用。
+ *    "接收端电量"（ble_get_pending_battery / ble_scanner_battery_level）。
+ * 4. 所有读取函数都在显示线程（LVGL 定时器，100ms 一次）上下文被调用。
  */
 
 #include <zephyr/kernel.h>
@@ -47,9 +46,6 @@
 #if IS_ENABLED(CONFIG_ZMK_USB)
 #include <zmk/usb.h>
 #endif
-#if IS_ENABLED(CONFIG_ZMK_BATTERY_REPORTING)
-#include <zmk/battery.h>
-#endif
 #if IS_ENABLED(CONFIG_ZMK_WPM)
 #include <zmk/wpm.h>
 #endif
@@ -70,7 +66,6 @@ static struct pending_display_data s_snapshot; /* 最近一次发布的快照 */
 static volatile bool s_update_pending;         /* 待刷新标志 */
 static volatile bool s_force_update;           /* 强制下一次刷新（屏幕切换后） */
 static uint32_t s_last_poll_ms;                /* 上次采样时间 */
-static int s_last_battery = -1;                /* 上次上报的本机电量 */
 static int s_selected_keyboard = 0;            /* 本机模式下只有槽位 0 */
 
 volatile int8_t ble_signal_rssi = 0;
@@ -129,20 +124,6 @@ static uint8_t ble_local_active_layer(void) {
 }
 
 
-/* 电量：显示端自己缓存一份（左右手各一个），由 app/src/battery_cb.c 刷新后
- * 调用 ble_battery_update() 写入 —— 模块不反向 extern app 的函数。
- * app 侧负责判断本构建是不是 dongle：
- *   - dongle：两只手都是外设，靠从机 BLS 上报的 identifier（1 = 左、2 = 右）认手；
- *   - 非 dongle：左手就是本机，右手是它的外设。
- * 某只手掉线时 app 会把对应值清零，屏幕据此显示"未连接"。 */
-static volatile uint8_t s_battery_left;
-static volatile uint8_t s_battery_right;
-
-void ble_battery_update(uint8_t left, uint8_t right) {
-    s_battery_left = left;
-    s_battery_right = right;
-}
-
 /* 把本机状态填进原来的 26 字节数据结构（字段布局与旧协议保持一致） */
 static void ble_fill_adv_data(struct zmk_status_adv_data *d) {
     memset(d, 0, sizeof(*d));
@@ -199,14 +180,14 @@ bool ble_bonded = false;
 
     /* 左右手电量：左手 -> battery_level（显示端 "L" 槽位），
      * 右手 -> peripheral_battery[0]（显示端 "R" 槽位）。
-     * 只读本文件缓存的那份（app/src/battery_cb.c 定时刷新后通过
-     * ble_battery_update() 推过来）：显示端不碰槽位 / identifier，
+     * 只读 s7789_update_battery.c 里那份缓存（app/src/battery_cb.c 定时刷新后
+     * 通过 ble_battery_update() 推过来）：显示端不碰槽位 / identifier，
      * 也不去调 app 侧的函数。 */
     d->peripheral_battery[0] = 0;
     d->peripheral_battery[1] = 0;
     d->peripheral_battery[2] = 0;
-    d->battery_level = s_battery_left;
-    d->peripheral_battery[0] = s_battery_right;
+    d->battery_level = ble_battery_left;
+    d->peripheral_battery[0] = ble_battery_right;
 
     /* The display layout renders the complete local layer name. This short
      * field is retained for layouts that use the legacy advertisement data. */
@@ -275,11 +256,7 @@ static bool ble_poll_local_state(void) {
      * （adv.battery_level 现在是左手电量，不能再当接收端电量用） */
     next.rssi = 0;
     next.rate_hz = 0.0f;
-    int soc = 0;
-#if IS_ENABLED(CONFIG_ZMK_BATTERY_REPORTING)
-    soc = zmk_battery_state_of_charge();
-#endif
-    next.scanner_battery = soc;
+    next.scanner_battery = ble_scanner_battery_level();
     next.scanner_battery_pending = false;
     next.signal_update_pending = false;
     next.update_pending = false;
@@ -320,23 +297,6 @@ bool ble_get_pending_update(struct pending_display_data *out) {
 bool ble_is_signal_pending(void) {
     /* 本机模式没有 RSSI / 速率来源，信号栏保持初始显示 */
     return false;
-}
-
-bool ble_get_pending_battery(int *level) {
-    int soc = 0;
-#if IS_ENABLED(CONFIG_ZMK_BATTERY_REPORTING)
-    soc = zmk_battery_state_of_charge();
-#endif
-
-    if (soc == s_last_battery) {
-        return false;
-    }
-    s_last_battery = soc;
-
-    if (level != NULL) {
-        *level = soc;
-    }
-    return true;
 }
 
 bool ble_get_kb_version(uint8_t *major, uint8_t *minor, uint8_t *patch, bool *is_dev, char *name,

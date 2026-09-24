@@ -15,6 +15,8 @@
  *   scanner_set_selected_keyboard     -> ble_set_selected_keyboard
  *   zmk_status_scanner_copy_keyboard  -> ble_copy_keyboard_status
  *   scanner_msg_send_display_refresh  -> ble_msg_send_display_refresh
+ *
+ * 电量相关（本机电量 + 左右手电量缓存）在 s7789_update_battery.c 里实现。
  */
 
 #pragma once
@@ -52,7 +54,16 @@ bool ble_is_signal_pending(void);
 bool ble_get_pending_battery(int *level);
 
 /**
- * @brief 更新本模块缓存的左右手电量（由 app/src/battery_cb.c 调用）
+ * @brief 取本机（接收端）自身电量
+ *
+ * 定义在 s7789_update_battery.c。用于状态快照的 scanner_battery 字段
+ * （经典界面显示"接收端电量"）；与 ble_get_pending_battery() 的区别是
+ * 这里不做变化检测，直接返回当前值。
+ */
+uint8_t ble_scanner_battery_level(void);
+
+/**
+ * @brief 更新本模块缓存的左右手电量（定义在 s7789_update_battery.c，由 app/src/battery_cb.c 调用）
  *
  * 显示端只认自己这份缓存：模块提供入口 + 缓存，不反向 extern app 侧的函数。
  * "哪只手是哪只手"（dongle 模式下靠从机 BLS 上报的 Battery Identifier 认手）
@@ -93,3 +104,8 @@ int ble_msg_send_display_refresh(void);
 /* 信号强度 / 速率：本机模式无来源，保持 0 与负值（界面显示 "-.--Hz"） */
 extern volatile int8_t ble_signal_rssi;
 extern volatile int32_t ble_signal_rate_x100;
+
+/* 左右手电量缓存（定义在 s7789_update_battery.c，由 app/src/battery_cb.c 通过
+ * ble_battery_update() 写入；s7789_update.c 只读这份值）0 = 未连接 / 未知 */
+extern volatile uint8_t ble_battery_left;  /* 左手电量（显示端 "L" 槽位） */
+extern volatile uint8_t ble_battery_right; /* 右手电量（显示端 "R" 槽位） */
