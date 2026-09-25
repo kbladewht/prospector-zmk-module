@@ -15,7 +15,9 @@
  *
  * 注意
  * ----
- * 1. 本机模式没有 RSSI / 速率来源，ble_is_signal_pending() 恒为 false。
+ * 1. 信号强度（RSSI）来自本机 central 与从机之间已经建立的 BLE 链路：
+ *    app/src/signal_cb.c 定时读链路 RSSI 后调用 ble_signal_update() 推过来，
+ *    ble_is_signal_pending() 报告"有新值待显示"（速率没有连接态来源，保持负值）。
  * 2. 只有"槽位 0"（本机自己）这一台设备。
  * 3. 电量全部在 s7789_update_battery.c 里（缓存 + 字段映射），本文件只有两个
  *    hook 调用点，字段怎么填、哪些槽位不用，都在那边：
@@ -69,6 +71,10 @@ static int s_selected_keyboard = 0;            /* 本机模式下只有槽位 0 
 
 volatile int8_t ble_signal_rssi = 0;
 volatile int32_t ble_signal_rate_x100 = -1; /* 负值 => 界面显示 "-.--Hz" */
+
+/* 新的信号值还没被显示端取走：ble_signal_update() 置位，
+ * ble_is_signal_pending() 取走后清零（见该函数注释）。 */
+static volatile bool s_signal_pending;
 
 /* ========== 看门狗喂狗（系统工作队列） ========== */
 
@@ -238,7 +244,9 @@ static bool ble_poll_local_state(void) {
     /* 本机自己就是数据源，永远有数据，不会出现"全部键盘超时" */
     next.no_keyboards = false;
 
-    /* 信号无来源（本机模式没有对端） */
+    /* 信号栏（RSSI / 速率）不走这份快照：由 ble_signal_update() 推送、
+     * ble_is_signal_pending() 通知，显示端单独读 —— 免得每秒变化的 RSSI
+     * 让整份快照判定为"有变化"而触发全量重绘。 */
     next.rssi = 0;
     next.rate_hz = 0.0f;
     next.signal_update_pending = false;
@@ -277,9 +285,25 @@ bool ble_get_pending_update(struct pending_display_data *out) {
     return true;
 }
 
+/* 信号栏数据入口（app/src/signal_cb.c 调用，系统工作队列上下文）。
+ * 与电量同一个方向（app -> 模块）：模块只做缓存 + 通知，显示端读缓存，
+ * 模块不反向 extern app 侧的函数。 */
+void ble_signal_update(int8_t rssi, int32_t rate_x100) {
+    ble_signal_rssi = rssi;
+    ble_signal_rate_x100 = rate_x100;
+    s_signal_pending = true;
+}
+
 bool ble_is_signal_pending(void) {
-    /* 本机模式没有 RSSI / 速率来源，信号栏保持初始显示 */
-    return false;
+    /* 有新值 -> 取走并清零：显示端每个新值只重绘一次，没新值时完全不碰 LVGL。
+     * 生产者（系统工作队列）与消费者（显示线程）并发：两个 volatile 各自原子，
+     * 极端情况下可能出现"读到上一帧的值"或"丢掉一次置位"，下一个新值即一致。 */
+    if (!s_signal_pending) {
+        return false;
+    }
+
+    s_signal_pending = false;
+    return true;
 }
 
 bool ble_get_kb_version(uint8_t *major, uint8_t *minor, uint8_t *patch, bool *is_dev, char *name,

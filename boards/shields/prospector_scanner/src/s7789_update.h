@@ -41,11 +41,25 @@
 bool ble_get_pending_update(struct pending_display_data *out);
 
 /**
- * @brief 是否有信号栏更新待处理
+ * @brief 是否有新的信号值待显示（定义在 s7789_update.c）
  *
- * 本机模式没有 RSSI / 速率来源，恒为 false（信号栏保持初始显示）。
+ * 有新值时第一次调用返回 true 并清零（取走即用），显示端据此只重绘一次。
+ * 新值由 app/src/signal_cb.c 读到从机链路 RSSI 后调用 ble_signal_update() 推过来；
+ * 还没连上从机 / 没有屏幕模块时恒为 false，信号栏保持初始显示。
  */
 bool ble_is_signal_pending(void);
+
+/**
+ * @brief 更新信号栏数据（定义在 s7789_update.c，由 app/src/signal_cb.c 调用）
+ *
+ * 与电量同一个方向（app -> 模块）：模块只做缓存 + 通知，不反向 extern app 侧函数。
+ *
+ * @param rssi 已连接从机链路的接收信号强度（dBm，HCI Read_RSSI 读到的值）
+ * @param rate_x100 速率 x100；负值表示没有来源（界面显示 "-.--Hz"）
+ *
+ * 调用上下文：系统工作队列，约 1s 一次。
+ */
+void ble_signal_update(int8_t rssi, int32_t rate_x100);
 
 /**
  * @brief 更新本模块缓存的左右手电量（定义在 s7789_update_battery.c，由 app/src/battery_cb.c 调用）
@@ -100,7 +114,9 @@ bool ble_copy_keyboard_status(int index, struct zmk_keyboard_status *out);
  */
 int ble_msg_send_display_refresh(void);
 
-/* 信号强度 / 速率：本机模式无来源，保持 0 与负值（界面显示 "-.--Hz"） */
+/* 信号强度 / 速率缓存：由 ble_signal_update() 写入（app/src/signal_cb.c 推送），
+ * 显示端在 ble_is_signal_pending() 返回 true 时读这两个值。
+ * 速率没有连接态来源，恒为负值（界面显示 "-.--Hz"）。 */
 extern volatile int8_t ble_signal_rssi;
 extern volatile int32_t ble_signal_rate_x100;
 
