@@ -81,4 +81,17 @@ void yads2_layout_update(uint8_t active_layer, const char *layer_name,
                          bool usb_connected, uint8_t ble_profile,
                          bool ble_connected, bool ble_bonded,
                          const char *keyboard_name);
+
+/**
+ * @brief Take a newly pushed RSSI, if there is one, and redraw the label
+ *
+ * The layout's main refresh is data driven (yads2_layout_update() only runs
+ * when the central has something new to report), so the RSSI would otherwise
+ * only follow along with key presses and the periodic battery polls. The
+ * display timer (custom_status_screen.c, 100 ms) calls this instead: it returns
+ * immediately when nothing new was pushed (ble_is_signal_pending()) or when the
+ * value did not change.
+ */
+void yads2_layout_refresh_rssi(void);
+
 void yads2_layout_destroy(void);

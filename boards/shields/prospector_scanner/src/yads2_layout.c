@@ -690,6 +690,12 @@ static void yads2_update_rssi(void) {
 
 /* ========== 对外接口 ========== */
 
+/* 定时器兜底刷新（见 yads2_layout.h）：本布局的主刷新是数据驱动的，闲置时没人
+ * 按键就没有数据事件，新的 RSSI 会一直躺在 ble_signal_rssi 里没人取走，所以
+ * custom_status_screen.c 的 100ms 定时器会调这里。内部自己判断"有没有新值"，
+ * 没有就什么都不做（ble_is_signal_pending() 读一次即清零，只由一个消费者取）。 */
+void yads2_layout_refresh_rssi(void) { yads2_update_rssi(); }
+
 lv_obj_t *yads2_layout_create(lv_obj_t *parent) {
     if (layout_created) {
         LOG_WRN("YADS2 layout already created");

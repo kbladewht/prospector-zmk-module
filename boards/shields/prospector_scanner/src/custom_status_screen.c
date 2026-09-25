@@ -36,6 +36,7 @@
 #include "brightness_control.h"  /* For auto brightness sensor control */
 #include "display_settings.h"   /* NVS persistence for display settings */
 #include "prospector_layouts.h"  /* Carrefinho-inspired display layouts */
+#include "yads2_layout.h"        /* yads2_layout_refresh_rssi()（信号栏定时兜底） */
 #include "fault_recovery.h"      /* Crash recovery + display watchdog feed */
 
 LOG_MODULE_REGISTER(display_screen, LOG_LEVEL_INF);
@@ -581,9 +582,16 @@ static void pending_update_timer_cb(lv_timer_t *timer) {
         }
     }
 
-    /* 信号栏更新（信号与主数据分开，1Hz） */
-    /* 直接读全局量并在本函数内更新显示（避免任何带 float 参数的调用） */
-    if (ble_is_signal_pending()) {
+    /* 信号栏更新（信号与主数据分开，1Hz；数据来自 app/src/signal_cb.c） */
+    /* 直接读全局量并在本函数内更新显示（避免任何带 float 参数的调用）
+     * 注意：ble_is_signal_pending() 读取一次就清零，所以"取走"必须由当前真正
+     * 在显示的那套皮肤来做，免得新值被另一套皮肤先吃掉、界面一直不更新。 */
+    if (current_screen == SCREEN_PROSPECTOR_DISPLAY &&
+        prospector_layouts_get_style() == PROSPECTOR_LAYOUT_YADS2) {
+        /* yads2 布局的主刷新是数据驱动的（不按键就没有数据事件），RSSI 由这个
+         * 100ms 定时器兜底；内部没有新值时会立刻返回，不会白重绘。 */
+        yads2_layout_refresh_rssi();
+    } else if (ble_is_signal_pending()) {
         int8_t sig_rssi = ble_signal_rssi;
         int32_t sig_rate_x100 = ble_signal_rate_x100;
 
