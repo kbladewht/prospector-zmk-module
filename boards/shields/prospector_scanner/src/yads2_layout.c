@@ -10,7 +10,7 @@
  * - 左右角内侧：BLE 指示（默认占位 BLE 1 / BLE 2）
  * - 中间：层滚筒（3 行，当前层居中高亮），下方是 NerdFont 修饰键图标
  * - 底部：每只手各自的电量（百分比 + 进度条）；电量行上方靠右是 RSSI
- *   （"-62dBm"，数据源与 Classic 主屏同一套接口：s7789_update 的
+ *   （"-62dBm"，18px，数据源与 Classic 主屏同一套接口：s7789_update 的
  *   ble_signal_rssi + ble_is_signal_pending()；还没有有效值时显示灰色 "--dBm"）
  *
  * 排布参考上游 YADS 界面 janpfischer/zmk-dongle-screen（MIT 许可）：
@@ -121,9 +121,15 @@ LV_FONT_DECLARE(lv_font_montserrat_12);
  * 紧贴电量行上沿、靠右下角对齐：中间是 NerdFont 修饰键图标行（居中，
  * 最多 4 个图标约 160px 宽），右下的这段空当不会被图标压到。
  * 文本形如 "-62dBm"；还没有有效值（本机模式尚未接通 RSSI 数据源）时显示
- * 灰色 "--dBm"，与 Classic 主屏的信号栏占位一致。 */
-#define YADS2_RSSI_LABEL_X_OFFSET (-8)
-#define YADS2_RSSI_LABEL_Y_OFFSET (-48)
+ * 灰色 "--dBm"，与 Classic 主屏的信号栏占位一致。
+ *
+ * 字号 18（原来 12，太小看不清具体数值）：屏宽 280，修饰键图标行居中，
+ * 4 个图标时两侧各 (280-160)/2 = 60px 空当，而 18px 的 "-62dBm" 约 60px 宽，
+ * 所以只有"4 个修饰键同时按住"这种极端情况才会和最右边的图标贴住几像素
+ * （0~3 个修饰键时余量充足）。再往上加字号就会明显压到图标了。
+ * X 取 -6 是让文字右边缘与下面的电量行右边缘对齐（电量行宽 268 居中 → 两侧各 6px）。 */
+#define YADS2_RSSI_LABEL_X_OFFSET (-6)
+#define YADS2_RSSI_LABEL_Y_OFFSET (-50)
 /* 着色阈值（dBm）：>= GOOD 绿色，>= FAIR 黄色，更低红色 */
 #define YADS2_RSSI_GOOD_THRESHOLD (-60)
 #define YADS2_RSSI_FAIR_THRESHOLD (-75)
@@ -665,7 +671,8 @@ static void yads2_create_rssi(lv_obj_t *parent) {
     snprintf(stbuf_rssi, sizeof(stbuf_rssi), "--dBm");
 
     rssi_label = lv_label_create(parent);
-    lv_obj_set_style_text_font(rssi_label, &lv_font_montserrat_12, LV_PART_MAIN);
+    /* 18px：12px 在 280x240 的屏上偏小，具体数值看不清（见上方 RSSI 配置注释） */
+    lv_obj_set_style_text_font(rssi_label, &lv_font_montserrat_18, LV_PART_MAIN);
     lv_obj_set_style_text_color(rssi_label, lv_color_hex(YADS2_COLOR_DIM), LV_PART_MAIN);
     lv_obj_align(rssi_label, LV_ALIGN_BOTTOM_RIGHT, YADS2_RSSI_LABEL_X_OFFSET,
                  YADS2_RSSI_LABEL_Y_OFFSET);
