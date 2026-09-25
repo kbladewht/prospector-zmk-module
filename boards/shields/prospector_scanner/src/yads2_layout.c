@@ -9,7 +9,9 @@
  * - 顶部中间：键盘名
  * - 左右角内侧：BLE 指示（默认占位 BLE 1 / BLE 2）
  * - 中间：层滚筒（3 行，当前层居中高亮），下方是 NerdFont 修饰键图标
- * - 底部：每只手各自的电量（百分比 + 进度条）
+ * - 底部：每只手各自的电量（百分比 + 进度条）；电量行上方靠右是 RSSI
+ *   （"-62dBm"，数据源与 Classic 主屏同一套接口：s7789_update 的
+ *   ble_signal_rssi + ble_is_signal_pending()；还没有有效值时显示灰色 "--dBm"）
  *
  * 排布参考上游 YADS 界面 janpfischer/zmk-dongle-screen（MIT 许可）：
  * https://github.com/janpfischer/zmk-dongle-screen/tree/main/boards/shields/dongle_screen
@@ -24,6 +26,9 @@
 #include "yads2_layout.h"
 #include "fonts_carrefinho.h"
 #include "fonts.h"
+/* RSSI 数据源：与 Classic 主屏（custom_status_screen.c）用同一对接口 ——
+ * ble_signal_rssi 是值，ble_is_signal_pending() 表示是否有新值待刷新。 */
+#include "s7789_update.h"
 #include <zephyr/kernel.h>
 #include <zephyr/logging/log.h>
 #include <zmk/keymap.h>
@@ -40,6 +45,8 @@ LOG_MODULE_REGISTER(yads2_layout, CONFIG_ZMK_LOG_LEVEL);
  * 这些子集字体只用于固定的全大写/数字字符串。 */
 LV_FONT_DECLARE(lv_font_montserrat_16);
 LV_FONT_DECLARE(lv_font_montserrat_28);
+/* RSSI 文本用 12 号：子集字体（DINish/FG）没有小写字母，"-62dBm" 必须有 */
+LV_FONT_DECLARE(lv_font_montserrat_12);
 
 /* ========== 颜色 ==========
  * 基调沿用上游 YADS 界面（janpfischer/zmk-dongle-screen）：默认白字，
@@ -55,6 +62,10 @@ LV_FONT_DECLARE(lv_font_montserrat_28);
 #define YADS2_COLOR_BAR_HIGH_TRACK 0x0B3D22
 #define YADS2_COLOR_BAR_MID_TRACK  0x4A3808
 #define YADS2_COLOR_BAR_LOW_TRACK  0x4A1010
+/* 信号强度（RSSI）复用同一套红绿灯，避免再引入一套配色 */
+#define YADS2_COLOR_SIGNAL_GOOD YADS2_COLOR_BATTERY_HIGH /* >= -60 dBm */
+#define YADS2_COLOR_SIGNAL_FAIR YADS2_COLOR_BATTERY_MID  /* -75 .. -61 dBm */
+#define YADS2_COLOR_SIGNAL_WEAK YADS2_COLOR_BATTERY_OFF  /* < -75 dBm */
 
 /* 电量降到该值（含）以下就显示红色（上游 YADS 为 <= 10%） */
 #define YADS2_LOW_BATTERY_THRESHOLD 10
@@ -106,6 +117,17 @@ LV_FONT_DECLARE(lv_font_montserrat_28);
 /* 槽位宽度小于该值时省略 '%'，保证 "L 85" 不被裁切 */
 #define YADS2_BATTERY_LABEL_NARROW_WIDTH 80
 
+/* ========== 底部：RSSI（信号强度） ==========
+ * 紧贴电量行上沿、靠右下角对齐：中间是 NerdFont 修饰键图标行（居中，
+ * 最多 4 个图标约 160px 宽），右下的这段空当不会被图标压到。
+ * 文本形如 "-62dBm"；还没有有效值（本机模式尚未接通 RSSI 数据源）时显示
+ * 灰色 "--dBm"，与 Classic 主屏的信号栏占位一致。 */
+#define YADS2_RSSI_LABEL_X_OFFSET (-8)
+#define YADS2_RSSI_LABEL_Y_OFFSET (-48)
+/* 着色阈值（dBm）：>= GOOD 绿色，>= FAIR 黄色，更低红色 */
+#define YADS2_RSSI_GOOD_THRESHOLD (-60)
+#define YADS2_RSSI_FAIR_THRESHOLD (-75)
+
 /* ========== NerdFont 修饰键符号（与 Classic 界面同一套字形） ========== */
 static const char *mod_symbols[4] = {
     "\xf3\xb0\x98\xb4", /* Ctrl  (U+F0634) */
@@ -123,6 +145,7 @@ static char stbuf_peer[2][8] = {{"L "}, {"R "}};
 static char stbuf_ble_slots[2][12] = {{"BLE 1"}, {"BLE 2"}};
 static char stbuf_mod[64] = "";
 static char stbuf_battery[YADS2_MAX_BATTERIES][12] = {{"--"}, {"--"}, {"--"}, {"--"}};
+static char stbuf_rssi[12] = "--dBm";
 
 /* ========== 控件状态 ========== */
 struct yads2_battery_slot {
@@ -137,6 +160,7 @@ static lv_obj_t *name_label = NULL;
 static lv_obj_t *layer_rows[YADS2_LAYER_ROW_COUNT] = {NULL};
 static lv_obj_t *mod_label = NULL;
 static lv_obj_t *battery_row = NULL;
+static lv_obj_t *rssi_label = NULL; /* 电量行上方的 "-62dBm" */
 static struct yads2_battery_slot battery_slots[YADS2_MAX_BATTERIES];
 
 /* 每个槽位的内容：名称（"L"、"R"、"Aux"、"A1"、"A2"）、最新电量与连接状态 */
@@ -165,6 +189,9 @@ static uint8_t cached_battery_level = 0;
 static bool cached_battery_connected = false;
 static uint8_t cached_peripheral_battery[YADS2_MAX_PERIPHERALS] = {0};
 static bool cached_peripheral_connected[YADS2_MAX_PERIPHERALS] = {false};
+/* RSSI 缓存：cached_rssi_valid = 是否已经收到过有效值（false 时显示 "--dBm"） */
+static bool cached_rssi_valid = false;
+static int8_t cached_rssi = 0;
 
 /* 用保存的值刷新一个电量槽位（文字 + 进度条） */
 static void yads2_render_battery_slot(int slot);
@@ -605,6 +632,62 @@ static void yads2_create_battery_row(lv_obj_t *parent) {
     yads2_apply_battery_layout(YADS2_BATTERY_DEFAULT_SLOTS);
 }
 
+/* ========== RSSI（电量行上方） ========== */
+
+/* 用缓存值刷新 RSSI 文本与颜色；没有有效值时显示灰色占位 "--dBm" */
+static void yads2_render_rssi(void) {
+    if (rssi_label == NULL) {
+        return;
+    }
+
+    if (!cached_rssi_valid) {
+        snprintf(stbuf_rssi, sizeof(stbuf_rssi), "--dBm");
+        lv_obj_set_style_text_color(rssi_label, lv_color_hex(YADS2_COLOR_DIM), LV_PART_MAIN);
+    } else {
+        uint32_t color = YADS2_COLOR_SIGNAL_WEAK;
+
+        if (cached_rssi >= YADS2_RSSI_GOOD_THRESHOLD) {
+            color = YADS2_COLOR_SIGNAL_GOOD;
+        } else if (cached_rssi >= YADS2_RSSI_FAIR_THRESHOLD) {
+            color = YADS2_COLOR_SIGNAL_FAIR;
+        }
+        snprintf(stbuf_rssi, sizeof(stbuf_rssi), "%ddBm", (int)cached_rssi);
+        lv_obj_set_style_text_color(rssi_label, lv_color_hex(color), LV_PART_MAIN);
+    }
+
+    lv_label_set_text_static(rssi_label, stbuf_rssi);
+}
+
+/* 电量行上方的 RSSI 标签（右下角对齐，避开居中的修饰键图标行） */
+static void yads2_create_rssi(lv_obj_t *parent) {
+    cached_rssi_valid = false;
+    cached_rssi = 0;
+    snprintf(stbuf_rssi, sizeof(stbuf_rssi), "--dBm");
+
+    rssi_label = lv_label_create(parent);
+    lv_obj_set_style_text_font(rssi_label, &lv_font_montserrat_12, LV_PART_MAIN);
+    lv_obj_set_style_text_color(rssi_label, lv_color_hex(YADS2_COLOR_DIM), LV_PART_MAIN);
+    lv_obj_align(rssi_label, LV_ALIGN_BOTTOM_RIGHT, YADS2_RSSI_LABEL_X_OFFSET,
+                 YADS2_RSSI_LABEL_Y_OFFSET);
+    lv_label_set_text_static(rssi_label, stbuf_rssi);
+}
+
+/* 有新 RSSI 时刷新；没有就保持上一次的值（与主屏信号栏同一规则） */
+static void yads2_update_rssi(void) {
+    if (!ble_is_signal_pending()) {
+        return;
+    }
+
+    int8_t rssi = ble_signal_rssi;
+    if (cached_rssi_valid && rssi == cached_rssi) {
+        return;
+    }
+
+    cached_rssi = rssi;
+    cached_rssi_valid = true;
+    yads2_render_rssi();
+}
+
 /* ========== 对外接口 ========== */
 
 lv_obj_t *yads2_layout_create(lv_obj_t *parent) {
@@ -625,6 +708,7 @@ lv_obj_t *yads2_layout_create(lv_obj_t *parent) {
     yads2_create_top_row(parent);
     yads2_create_center(parent);
     yads2_create_battery_row(parent);
+    yads2_create_rssi(parent);
 
     /* 第一次 update 时强制全量刷新 */
     cached_valid = false;
@@ -735,6 +819,9 @@ void yads2_layout_update(uint8_t active_layer, const char *layer_name,
         cached_battery_connected = battery_connected;
     }
 
+    /* RSSI（信号强度）：数据源与本机其它界面相同，有新值才刷新 */
+    yads2_update_rssi();
+
     /* 两角的左右手连接状态：某半只要上报了电量或者有矩阵信息就算已连接；还没收到任何数据时
      * （且电量占位开启）两只手都按已连接显示，让界面看起来完整。
      * BLE 指示由 yads2_layout_set_ble() 驱动、层滚筒由 yads2_layout_set_layer()
@@ -766,9 +853,9 @@ void yads2_layout_destroy(void) {
     }
 
     /* 所有控件都直接挂在 screen / 电量行上 */
-    lv_obj_t *objects[] = {battery_row,  ble_slot_labels[0], ble_slot_labels[1],
-                           peer_labels[0], peer_labels[1],    name_label,
-                           mod_label};
+    lv_obj_t *objects[] = {battery_row,  rssi_label,     ble_slot_labels[0],
+                           ble_slot_labels[1], peer_labels[0], peer_labels[1],
+                           name_label,   mod_label};
     for (size_t i = 0; i < sizeof(objects) / sizeof(objects[0]); i++) {
         if (objects[i]) {
             lv_obj_del(objects[i]);
@@ -783,6 +870,7 @@ void yads2_layout_destroy(void) {
     }
 
     battery_row = NULL;
+    rssi_label = NULL;
     ble_slot_labels[0] = NULL;
     ble_slot_labels[1] = NULL;
     peer_labels[0] = NULL;
@@ -803,6 +891,9 @@ void yads2_layout_destroy(void) {
     battery_slot_count = 0;
     cached_valid = false;
     cached_keyboard_name[0] = '\0';
+    cached_rssi_valid = false;
+    cached_rssi = 0;
+    snprintf(stbuf_rssi, sizeof(stbuf_rssi), "--dBm");
     layer_count = 0;
     layer_current = 0;
     ble_slot_profiles[0] = 1;

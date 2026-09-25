@@ -24,6 +24,10 @@
  *   yads2_layout_set_layer() moves the highlight to the current layer.
  * - Modifier icons (NerdFont row below the layer list)
  * - Battery level per half along the bottom edge
+ * - RSSI ("-62dBm") just above the battery row on the right; it comes from the
+ *   same source as the Classic status screen (s7789_update's ble_signal_rssi +
+ *   ble_is_signal_pending()) and falls back to a dim "--dBm" placeholder while
+ *   no value has been reported.
  *
  * WPM is intentionally not shown on this layout.
  *
