@@ -4,7 +4,7 @@
  * SPDX-License-Identifier: MIT
  */
 
-#include <../boards/kblade/xiao_ble.dts>
+#include <../boards/kblade/kblade.dts>
 #include <common/nordic/nrf52840_uf2_boot_mode.dtsi>
 
 /* Add an sd_partition label for compatibility with the nosd snippet */
