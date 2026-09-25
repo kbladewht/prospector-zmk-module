@@ -1,7 +1,7 @@
 # Prospector Scanner CMakeLists.txt
 # Step-by-step restoration from display_test
 
-if(CONFIG_SHIELD_PROSPECTOR_SCANNER)
+if(CONFIG_SHIELD_PROSPECTOR_e73)
     # Backlight initialization (always needed)
     target_sources(app PRIVATE src/backlight_init.c)
 
