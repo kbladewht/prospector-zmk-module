@@ -53,4 +53,6 @@ if(CONFIG_SHIELD_PROSPECTOR_ADAPTER)
         target_sources(app PRIVATE src/split/bluetooth/central_status_changed_observer.c)
 endif()
 
-# Scanner shield sources are handled by boards/shields/prospector_scanner/CMakeLists.txt
+# Scanner shield sources are handled by each shield's own CMakeLists.txt
+# (boards/shields/prospector_scanner/ and boards/shields/prospector_e73/), which
+# point at the shared display sources in boards/shields/src.
