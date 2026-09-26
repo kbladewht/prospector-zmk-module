@@ -8,7 +8,9 @@ set(PROSPECTOR_SHIELD_SRC ${CMAKE_CURRENT_SOURCE_DIR}/../src)
 # 注意：prospector_e73/Kconfig.shield 里定义的符号目前仍叫
 # SHIELD_PROSPECTOR_SCANNER（def_bool $(shields_list_contains,prospector_e73)），
 # 因此这里两个符号都接受，避免符号名对不上时一个源文件都不参与编译。
-if(CONFIG_SHIELD_PROSPECTOR_e73)
+# （只看 CONFIG_SHIELD_PROSPECTOR_e73 会导致条件恒为假：.config 里只有
+#   CONFIG_SHIELD_PROSPECTOR_SCANNER=y，共享 src/*.c 全部漏编译。）
+if(CONFIG_SHIELD_PROSPECTOR_e73 OR CONFIG_SHIELD_PROSPECTOR_SCANNER)
     # Backlight initialization (always needed)
     target_sources(app PRIVATE ${PROSPECTOR_SHIELD_SRC}/backlight_init.c)
 
