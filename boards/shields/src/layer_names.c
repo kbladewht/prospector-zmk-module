@@ -186,10 +186,6 @@ void prospector_layer_names_reset(void) {
     LOG_INF("All layer names reset to devicetree display-name");
 }
 
-/* ========== 落盘 + 刷新 ========== */
-
-#if IS_ENABLED(CONFIG_SETTINGS)
-
 static void do_save(void) {
     for (size_t i = 0; i < ARRAY_SIZE(layer_names); i++) {
         if ((save_pending_mask & BIT(i)) == 0) {
@@ -219,11 +215,6 @@ void prospector_layer_names_save_if_dirty(void) {
     LOG_INF("Layer names saved to NVS");
 }
 
-#else
-
-void prospector_layer_names_save_if_dirty(void) {}
-
-#endif /* CONFIG_SETTINGS */
 
 void prospector_layer_names_refresh_display(void) {
     /* 层名变了，但快照 memcmp 只看前面几个字节，所以这里显式请求一次全量重绘 */
