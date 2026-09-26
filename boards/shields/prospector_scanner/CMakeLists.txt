@@ -35,6 +35,9 @@ if(CONFIG_SHIELD_PROSPECTOR_SCANNER)
     # Display settings persistence (NVS)
     target_sources_ifdef(CONFIG_ZMK_DISPLAY_STATUS_SCREEN_CUSTOM app PRIVATE ${PROSPECTOR_SHIELD_SRC}/display_settings.c)
 
+    # 层名仓库（可改 + NVS 持久化）：YADS2 层滚筒与广播短字段都从这里取名字
+    target_sources_ifdef(CONFIG_ZMK_DISPLAY_STATUS_SCREEN_CUSTOM app PRIVATE ${PROSPECTOR_SHIELD_SRC}/layer_names.c)
+
     # Brightness control with APDS9960 sensor for auto brightness
     target_sources_ifdef(CONFIG_ZMK_DISPLAY_STATUS_SCREEN_CUSTOM app PRIVATE ${PROSPECTOR_SHIELD_SRC}/brightness_control.c)
 

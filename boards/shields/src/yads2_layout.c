@@ -29,6 +29,8 @@
 /* RSSI 数据源：与 Classic 主屏（custom_status_screen.c）用同一对接口 ——
  * ble_signal_rssi 是值，ble_is_signal_pending() 表示是否有新值待刷新。 */
 #include "s7789_update.h"
+/* 层名仓库：用户可改、落 NVS；没有自定义名时回落到 devicetree display-name */
+#include "layer_names.h"
 #include <zephyr/kernel.h>
 #include <zephyr/logging/log.h>
 #include <zmk/keymap.h>
@@ -441,10 +443,13 @@ static void yads2_update_name(const char *keyboard_name) {
 
 /* ========== 层滚筒（层名来自本机 keymap） ========== */
 
-/* 取某一层的完整名字；该层没有 display-name 时退化为层号
- * （与上游 YADS 的 layer 控件同一规则）。 */
+/* 取某一层的完整名字；名字来自"层名仓库"（用户可在 UI 里改、落 NVS），仓库里
+ * 没有这一层时由仓库内部回落到 devicetree display-name，两者都没有就退化为
+ * 层号（与上游 YADS 的 layer 控件同一规则）。
+ * 注意 index 是"层序号"：index -> layer id 的转换在仓库里做，所以以后即使开启
+ * CONFIG_ZMK_KEYMAP_LAYER_REORDERING（层被重排）也不会显示错层的名字。 */
 static void yads2_layer_name(uint8_t index, char *out, size_t out_len) {
-    const char *name = (index < layer_count) ? zmk_keymap_layer_name(index) : NULL;
+    const char *name = (index < layer_count) ? prospector_layer_name_get(index) : NULL;
 
     if (name != NULL && name[0] != '\0') {
         snprintf(out, out_len, "%s", name);

@@ -37,6 +37,8 @@
 
 #include "s7789_update.h"
 #include "fault_recovery.h"
+/* 层名仓库：与 YADS2 布局用同一个数据源（自定义名优先，回落 DT display-name） */
+#include "layer_names.h"
 
 #include <zmk/status_advertisement.h>
 #include <zmk/keymap.h>
@@ -185,7 +187,7 @@ bool ble_bonded = false;
 
     /* The display layout renders the complete local layer name. This short
      * field is retained for layouts that use the legacy advertisement data. */
-    const char *lname = zmk_keymap_layer_name(layer_index);
+    const char *lname = prospector_layer_name_get(layer_index);
     memset(d->layer_name, ' ', sizeof(d->layer_name));
     if (lname != NULL) {
         for (size_t i = 0; i < sizeof(d->layer_name) && lname[i] != '\0'; i++) {

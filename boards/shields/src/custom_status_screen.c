@@ -35,6 +35,7 @@
 #include "touch_handler.h"  /* For LVGL input device registration */
 #include "brightness_control.h"  /* For auto brightness sensor control */
 #include "display_settings.h"   /* NVS persistence for display settings */
+#include "layer_names.h"        /* 层名仓库（可改 + NVS 持久化） */
 #include "prospector_layouts.h"  /* Carrefinho-inspired display layouts */
 #include "yads2_layout.h"        /* yads2_layout_refresh_rssi()（信号栏定时兜底） */
 #include "fault_recovery.h"      /* Crash recovery + display watchdog feed */
@@ -290,6 +291,8 @@ static uint8_t ds_layer_slide_max = 7;
 /* Load persisted settings from NVS into display state variables */
 static void load_display_settings(void) {
     display_settings_init();
+    /* 层名仓库：把 NVS 里的自定义层名读回 RAM，保证首屏渲染前名字已就绪 */
+    prospector_layer_names_init();
     ds_auto_brightness_enabled = display_settings_get_auto_brightness();
     ds_manual_brightness = display_settings_get_manual_brightness();
     ds_max_layers = display_settings_get_max_layers();
