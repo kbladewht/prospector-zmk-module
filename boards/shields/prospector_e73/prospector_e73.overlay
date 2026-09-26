@@ -17,7 +17,7 @@
     // kscan0: kscan {
     //     compatible = "zmk,kscan-gpio-direct";
     //     wakeup-source;
-    //     input-gpios = <&xiao_d 2 (GPIO_ACTIVE_LOW | GPIO_PULL_UP)>;
+    //     input-gpios = <&kblade_d 2 (GPIO_ACTIVE_LOW | GPIO_PULL_UP)>;
     // };
 
     /* PWM backlight control for brightness adjustment - Pin 6 = P1.11 */
@@ -106,7 +106,7 @@
     pinctrl-0 = <&spi3_default>;
     pinctrl-1 = <&spi3_sleep>;
     pinctrl-names = "default", "sleep";
-    cs-gpios = <&xiao_d 9 GPIO_ACTIVE_LOW>;//P13
+    cs-gpios = <&kblade_d 9 GPIO_ACTIVE_LOW>;//P13
 };
 
 /* MIPI DBI wrapper for ST7789V */
@@ -114,8 +114,8 @@
     mipi_dbi {
         compatible = "zephyr,mipi-dbi-spi";
         spi-dev = <&spi3>;
-        dc-gpios = <&xiao_d 7 GPIO_ACTIVE_HIGH>;//P1.11
-        reset-gpios = <&xiao_d 3 GPIO_ACTIVE_LOW>;//p10
+        dc-gpios = <&kblade_d 7 GPIO_ACTIVE_HIGH>;//P1.11
+        reset-gpios = <&kblade_d 3 GPIO_ACTIVE_LOW>;//p10
         write-only;
         #address-cells = <1>;
         #size-cells = <0>;
@@ -192,8 +192,8 @@
         /* Touch panel control pins */
         /* TP_IRQ → D0 = P0.02 (interrupt pin) */
         /* TP_RST → D1 = P0.28 (reset pin) */
-        irq-gpios = <&xiao_d 0 (GPIO_ACTIVE_LOW | GPIO_PULL_UP)>;
-        rst-gpios = <&xiao_d 1 GPIO_ACTIVE_LOW>;
+        irq-gpios = <&kblade_d 0 (GPIO_ACTIVE_LOW | GPIO_PULL_UP)>;
+        rst-gpios = <&kblade_d 1 GPIO_ACTIVE_LOW>;
     };
 
     /* APDS9960 Light/Gesture Sensor (Step 5c - for auto-brightness) */

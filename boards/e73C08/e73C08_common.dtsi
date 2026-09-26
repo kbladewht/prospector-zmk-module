@@ -8,7 +8,7 @@
 #include <nordic/nrf52840_qiaa.dtsi>
 #include "nrf52840_partition_uf2_sdv7.dtsi"
 #include "e73C08-pinctrl.dtsi"
-#include "seeed_xiao_connector.dtsi"
+#include "e73_connector.dtsi"
 
 / {
 	chosen {
