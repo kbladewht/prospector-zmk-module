@@ -1,0 +1,8 @@
+board:
+  name: e73C08
+  full_name: KBlade nRF52840
+  vendor: kblade
+  socs:
+    - name: nrf52840
+      variants:
+        - name: zmk
