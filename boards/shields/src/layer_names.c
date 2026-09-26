@@ -101,11 +101,15 @@ bool prospector_layer_name_is_custom(uint8_t layer_index) {
     return layer_index < ARRAY_SIZE(layer_names) && layer_names[layer_index][0] != '\0';
 }
 
+/*
+ * 获取指定索引的层名,读取入口
+ */
 const char *prospector_layer_name_get(uint8_t layer_index) {
     if (layer_index >= ZMK_KEYMAP_LAYERS_LEN) {
         return NULL; /* keymap 里没有这一层，调用方自行退化成层号 */
     }
 
+    //如果这一层有自定义名字（不是空）,就返回这个自定义名字
     if (layer_names[layer_index][0] != '\0') {
         return layer_names[layer_index];
     }
