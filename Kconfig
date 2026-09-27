@@ -628,3 +628,80 @@ config PROSPECTOR_DEBUG_WIDGET
       Shows sensor status, battery monitoring info, and system debug messages.
       Positioned in modifier area when no modifier keys are active.
       ENABLE for development and debugging, DISABLE for production use.
+
+config PROSPECTOR_DISPLAY_LOG
+    bool "7789 屏日志控制台（纯日志固件，不经 LVGL）"
+    default n
+    depends on DISPLAY
+    help
+      Enable a raw text console on the ST7789V (7789) display: the Zephyr log
+      stream is rendered with a built-in 10x16 bitmap font through the
+      standard display API (display_write) - no LVGL, no ZMK status screen.
+
+      Use it when you want to read logs on the device itself (no USB/serial
+      attached). Recommended: build a dedicated firmware that turns the normal
+      UI off, which is also the cheapest in RAM:
+
+        cd app
+        west build -p always -d build-log -b kblade//zmk -S zmk-usb-logging -- \
+          -DSHIELD="prospector_e73 corne_dongle" -DCONFIG_ZMK_BLE=y \
+          -DKEYBOARD=pilot/npad -DKEYMAP=corne_dongle \
+          -DCONFIG_PROSPECTOR_DISPLAY_LOG=y \
+          -DCONFIG_ZMK_DISPLAY=n -DCONFIG_LVGL=n \
+          -DZMK_EXTRA_MODULES="<repo>/modules/prospector-zmk-module"
+
+      (仓库根目录的 e73_log.sh 就是这条命令，构建目录用 build-log，
+       不会覆盖平常用的 app/build。)
+
+      Log source depends on the log mode:
+      - CONFIG_LOG_MODE_DEFERRED (default): an extra log backend is registered
+        next to the USB/UART backend, so screen and serial show the same
+        stream. 屏上的等级/模块名/时间戳格式化由 Zephyr log_output 完成。
+      - CONFIG_LOG_MODE_MINIMAL=y: minimal 模式没有后端，这里改为接管 printk
+        的字符出口，屏成为唯一输出（USB/串口日志同时消失），开销最小。
+
+      开启本选项时必须同时关掉 CONFIG_ZMK_DISPLAY：屏只能有一个主人。
+
+config PROSPECTOR_DISPLAY_LOG_MAX_COLS
+    int "日志屏每行最多字符数"
+    range 8 46
+    default 28
+    depends on PROSPECTOR_DISPLAY_LOG
+    help
+      每个字符 10 像素宽，280 像素宽的屏正好 28 个字符。超宽的行自动折行
+      （和串口终端一样）。该值也决定行像素缓冲的静态内存占用
+      （RAM ≈ MAX_COLS * 10 * 16 * 2 字节），不要设太大。
+
+config PROSPECTOR_DISPLAY_LOG_LINES
+    int "环形行缓冲的行数"
+    range 4 30
+    default 15
+    depends on PROSPECTOR_DISPLAY_LOG
+    help
+      保留最近多少行日志。字高 16 像素，240 像素高的屏正好显示 15 行。
+
+config PROSPECTOR_DISPLAY_LOG_REFRESH_MS
+    int "刷屏周期（毫秒）"
+    range 20 2000
+    default 300
+    depends on PROSPECTOR_DISPLAY_LOG
+    help
+      每隔这么久检查一次是否有新日志，内容变了才刷（整屏 280x240 的
+      RGB565 约 134KB，20MHz SPI 下约 50ms 传完）。空闲时完全不碰 SPI。
+      日志很密集时值太小会长时间占用系统工作队列。
+
+config PROSPECTOR_DISPLAY_LOG_TIMESTAMP
+    bool "屏幕上显示日志时间戳"
+    default n
+    depends on PROSPECTOR_DISPLAY_LOG
+    help
+      时间戳形如 [00:00:12.345,678]，要占 21 个字符（接近一整行），所以
+      默认关闭：只显示 <inf> 这类等级前缀和模块名。
+
+config PROSPECTOR_DISPLAY_LOG_COLORS
+    bool "按日志等级给文字着色"
+    default y
+    depends on PROSPECTOR_DISPLAY_LOG
+    help
+      err 红色、wrn 黄色、inf 绿色、dbg 灰色、其它白色，背景全黑。
+      关掉则所有文字都是白色（最省一点代码空间）。

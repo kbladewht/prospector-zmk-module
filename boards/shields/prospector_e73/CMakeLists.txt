@@ -82,6 +82,11 @@ if(CONFIG_SHIELD_PROSPECTOR_e73 OR CONFIG_SHIELD_PROSPECTOR_SCANNER)
         ${PROSPECTOR_SHIELD_SRC}/fonts_carrefinho/Symbols_Semibold_32.c
     )
 
+    # 纯日志固件：把 7789 屏变成本文件画的字符控制台（需要 CONFIG_ZMK_DISPLAY=n，
+    # 由 CONFIG_PROSPECTOR_DISPLAY_LOG 控制，默认关，不影响正常键盘固件）
+    target_sources_ifdef(CONFIG_PROSPECTOR_DISPLAY_LOG app PRIVATE ${PROSPECTOR_SHIELD_SRC}/qf_display_log.c)
+    target_sources_ifdef(CONFIG_PROSPECTOR_DISPLAY_LOG app PRIVATE ${PROSPECTOR_SHIELD_SRC}/qf_display_log_font.c)
+
     # Include path for the shared sources (headers live next to the .c files)
     target_include_directories(app PRIVATE ${PROSPECTOR_SHIELD_SRC})
 endif()
