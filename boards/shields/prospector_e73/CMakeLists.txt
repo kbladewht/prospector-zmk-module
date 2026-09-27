@@ -72,9 +72,9 @@ if(CONFIG_SHIELD_PROSPECTOR_e73 OR CONFIG_SHIELD_PROSPECTOR_SCANNER)
         ${PROSPECTOR_SHIELD_SRC}/fonts_carrefinho/FR_Medium_32.c
         ${PROSPECTOR_SHIELD_SRC}/fonts_carrefinho/FR_Regular_30.c
         ${PROSPECTOR_SHIELD_SRC}/fonts_carrefinho/FR_Regular_36.c
-        ${PROSPECTOR_SHIELD_SRC}/fonts_carrefinho/FR_Regular_48.c
-        ${PROSPECTOR_SHIELD_SRC}/fonts_carrefinho/FR_Thin_48.c
-        ${PROSPECTOR_SHIELD_SRC}/fonts_carrefinho/PPF_NarrowThin_64.c
+        # ${PROSPECTOR_SHIELD_SRC}/fonts_carrefinho/FR_Regular_48.c
+        # ${PROSPECTOR_SHIELD_SRC}/fonts_carrefinho/FR_Thin_48.c
+        # ${PROSPECTOR_SHIELD_SRC}/fonts_carrefinho/PPF_NarrowThin_64.c
         ${PROSPECTOR_SHIELD_SRC}/fonts_carrefinho/Symbols_Bold_26.c
         ${PROSPECTOR_SHIELD_SRC}/fonts_carrefinho/Symbols_Medium_28.c
         ${PROSPECTOR_SHIELD_SRC}/fonts_carrefinho/Symbols_Regular_28.c
