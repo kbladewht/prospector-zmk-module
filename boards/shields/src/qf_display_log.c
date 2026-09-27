@@ -29,13 +29,25 @@
  *    arch_printk_char_out()，并在初始化时 __printk_hook_install() 盖掉
  *    USB console 的 hook）。代价是 USB/串口日志同时消失（二选一）。
  *
- * 线程模型
- * ========
+ * 线程模型与"顺滑"
+ * ================
  * 字符接收 qf_log_char() 可能来自任何上下文（日志处理线程、系统工作队列、
  * 中断），所以临界区一律用 irq_lock()，里面只做内存拷贝，绝不调用 display
- * API。真正写屏放在系统工作队列的 k_work_delayable 里，默认
- * CONFIG_PROSPECTOR_DISPLAY_LOG_REFRESH_MS 一次，且只有内容变化
- * （s_dirty）时才刷 —— 空闲时几乎不占 SPI。
+ * API。真正写屏在系统工作队列的 k_work_delayable 里，而且是
+ * "事件驱动 + 差异行"，不再是固定周期轮询：
+ *
+ *  1) 每攒满一整行日志就 qf_request_refresh()，把刷屏安排到
+ *     CONFIG_PROSPECTOR_DISPLAY_LOG_SETTLE_MS（默认 10ms）之后；日志密集时
+ *     多次请求合并成一次刷新。屏上的延迟因此从"最多 REFRESH_MS"降到
+ *     "最后一行日志之后 10ms"，观感接近串口终端。
+ *  2) 滚动显示下逐行比对，屏上已经正确的行不重写：屏还没满的阶段每来一行
+ *     日志只写一行（280x16 的 RGB565 约 8960 字节，20MHz SPI 约 3.5ms）。
+ *  3) 屏满了以后默认仍是终端式整屏上滚（一次约 134KB / 50ms）；日志比
+ *     ~20 行/秒更密时 SPI 会跟不上，这时可以打开
+ *     CONFIG_PROSPECTOR_DISPLAY_LOG_WRAP=y 换成"回绕写"：任何时刻一轮只写
+ *     一行，代价是满屏后从顶部覆盖而不是整屏上滚。
+ *  4) CONFIG_PROSPECTOR_DISPLAY_LOG_REFRESH_MS 只是兜底周期（默认 100ms）。
+ * 没有新日志时不排队、不碰 SPI。
  */
 
 #include <zephyr/kernel.h>
@@ -87,7 +99,12 @@ static uint8_t s_cur_len;
 static uint8_t s_cur_level = LOG_LEVEL_INF;
 static uint16_t s_head;   /* s_lines 中最新一行的槽位 */
 static uint16_t s_filled; /* 已写入行数（不足一屏时屏顶留空） */
-static volatile bool s_dirty;
+static volatile bool s_dirty; /* 有还没画到屏上的新内容，刷屏任务取走后清掉 */
+/* 刷屏任务：新行到达时由 qf_request_refresh() 提前唤醒，空闲时靠兜底周期 */
+static void qf_refresh_handler(struct k_work *work);
+static void qf_request_refresh(void);
+static K_WORK_DELAYABLE_DEFINE(qf_refresh_work, qf_refresh_handler);
+static volatile bool s_req; /* 已经安排过一次提前刷新，别重复推迟 */
 
 /* ========== 字符入口（任意上下文，含中断） ========== */
 
@@ -110,38 +127,67 @@ static void qf_commit_line(void) {
     s_dirty = true;
 }
 
-/* 在 irq_lock 保护区内调用：超宽自动折行，和串口终端一样 */
-static void qf_append_char(char c) {
+/* 在 irq_lock 保护区内调用：超宽自动折行，和串口终端一样。
+ * 返回值表示这次追加顺手把上一行提交了（屏幕需要马上刷）。 */
+static bool qf_append_char(char c) {
+    bool committed = false;
+
     if (s_cur_len >= QF_LOG_COLS) {
         qf_commit_line();
+        committed = true;
     }
 
     s_cur[s_cur_len] = c;
     s_cur_len++;
+
+    return committed;
 }
 
 /**
  * @brief 接收一个日志字符（日志后端的 char_out / printk 出口都汇到这里）
  *
- * 只做内存拷贝，供任意上下文调用。
+ * 只做内存拷贝，供任意上下文调用；真正写屏交给 qf_request_refresh() 调度。
  */
 static void qf_log_char(char c) {
     unsigned int key = irq_lock();
+    bool line_done = false;
 
     if (c == '\n') {
         qf_commit_line();
+        line_done = true;
     } else if (c == '\r') {
         /* CRLF 里的 CR：忽略（行结束由 \n 提交） */
     } else if (c == '\t') {
         for (int i = 0; i < 4; i++) {
-            qf_append_char(' ');
+            if (qf_append_char(' ')) {
+                line_done = true;
+            }
         }
     } else if (c >= QF_LOG_FONT_FIRST && c <= QF_LOG_FONT_LAST) {
-        qf_append_char(c);
+        line_done = qf_append_char(c);
     }
-    /* 其余控制字符直接丢弃 */
+    /* 其它字符直接丢弃 */
 
     irq_unlock(key);
+
+    if (line_done) {
+        /* 攒满一整行才叫醒刷屏任务：屏上更新延迟从"最多 REFRESH_MS"降到
+         * "最后一行日志之后 SETTLE_MS"，观感顺畅很多 */
+        qf_request_refresh();
+    }
+}
+
+/**
+ * @brief 有新内容时提前唤醒刷屏任务（去抖；可在任意上下文调用）
+ *
+ * s_req 保证同一时间只安排一次：日志再密也是"最后一次新行之后 SETTLE_MS"
+ * 或者"上一次刷屏之后 SETTLE_MS"里必刷一次，不会把刷新无限往后推。
+ */
+static void qf_request_refresh(void) {
+    if (!s_req) {
+        s_req = true;
+        k_work_reschedule(&qf_refresh_work, K_MSEC(CONFIG_PROSPECTOR_DISPLAY_LOG_SETTLE_MS));
+    }
 }
 
 #if IS_ENABLED(CONFIG_LOG_MODE_MINIMAL)
@@ -224,6 +270,30 @@ static void qf_render_line(const char *text, uint16_t fg) {
 }
 
 /* 重画整个可见区域：屏第 0 行对应环形缓冲里最旧的一行 */
+/* ---- 刷屏侧状态（只有刷屏任务会写） ---- */
+
+#if IS_ENABLED(CONFIG_PROSPECTOR_DISPLAY_LOG_WRAP)
+/* 回绕写：新行写到光标的屏幕行，光标下移；到底后回到第 0 行覆盖最旧的。
+ * 任何时刻一轮只写一行（约 3.5ms @20MHz），日志再密也不拖慢键盘/无线。 */
+static uint16_t s_wrap_row;  /* 下一个要写的屏幕行 */
+static uint16_t s_wrap_slot; /* 最后一个已经写出去的行槽位 */
+static bool s_wrap_started;
+#else
+/* 滚动显示：记下屏上已经画好的内容，没变的行就不用再占 SPI */
+static char s_shown[QF_LOG_LINES][QF_LOG_COLS + 1];
+static uint8_t s_shown_level[QF_LOG_LINES];
+static bool s_shown_valid[QF_LOG_LINES];
+#endif
+
+/* 本轮没写完（回绕写分片）→ 立刻再来一轮 */
+static bool s_more;
+
+/**
+ * @brief 把行缓冲里变化的部分刷到屏上
+ *
+ * 内容没变（!s_dirty）直接返回；滚动显示下逐行比对，屏上已经正确的行不重写，
+ * 所以"屏还没满"的阶段每来一行只写一行，屏幕满溢之后才整屏上移。
+ */
 static void qf_flush(void) {
     struct display_buffer_descriptor desc = {
         .buf_size = (size_t)s_row_px * QF_LOG_FONT_H * sizeof(uint16_t),
@@ -232,56 +302,128 @@ static void qf_flush(void) {
         .pitch = s_row_px,
     };
     unsigned int key;
-    uint16_t head;
-    uint16_t filled;
-    bool was_dirty;
 
-    key = irq_lock();
-    head = s_head;
-    filled = s_filled;
-    was_dirty = s_dirty;
-    s_dirty = false;
-
-    for (uint16_t row = 0; row < s_disp_rows; row++) {
-        uint16_t back = s_disp_rows - 1 - row; /* 从最新一行往回数 */
-
-        if (back < filled) {
-            uint16_t slot = (head + QF_LOG_LINES - back) % QF_LOG_LINES;
-
-            memcpy(s_snap[row], s_lines[slot], QF_LOG_COLS + 1);
-            s_snap_level[row] = s_line_level[slot];
-        } else {
-            s_snap[row][0] = '\0';
-            s_snap_level[row] = LOG_LEVEL_INF;
-        }
-    }
-    irq_unlock(key);
-
-    if (!was_dirty) {
+    if (!s_dirty) {
         return;
     }
 
+    s_more = false;
+
+#if IS_ENABLED(CONFIG_PROSPECTOR_DISPLAY_LOG_WRAP)
+    {
+        uint16_t pending;
+
+        key = irq_lock();
+        s_dirty = false;
+        if (!s_wrap_started) {
+            s_wrap_started = true;
+            s_wrap_slot = s_head;
+            s_wrap_row = 0;
+        }
+        pending = (s_head + QF_LOG_LINES - s_wrap_slot) % QF_LOG_LINES;
+        if (pending > s_disp_rows) {
+            /* 积压比一屏还多：丢掉旧的，只画最近一屏 */
+            s_wrap_slot = (s_head + QF_LOG_LINES - s_disp_rows) % QF_LOG_LINES;
+            s_wrap_row = 0;
+            pending = s_disp_rows;
+        }
+        irq_unlock(key);
+
+        for (uint16_t done = 0;
+             pending > 0 && done < CONFIG_PROSPECTOR_DISPLAY_LOG_ROWS_PER_CYCLE;
+             done++, pending--) {
+            key = irq_lock();
+            s_wrap_slot = (s_wrap_slot + 1) % QF_LOG_LINES;
+            memcpy(s_snap[0], s_lines[s_wrap_slot], QF_LOG_COLS + 1);
+            s_snap_level[0] = s_line_level[s_wrap_slot];
+            irq_unlock(key);
+
+            qf_render_line(s_snap[0], qf_color_for_level(s_snap_level[0]));
+
+            if (display_write(s_display, 0, s_wrap_row * QF_LOG_FONT_H, &desc, s_px) < 0) {
+                return;
+            }
+
+            s_wrap_row = (s_wrap_row + 1) % s_disp_rows;
+        }
+
+        if (pending > 0) {
+            s_more = true;
+        }
+        return;
+    }
+#else
+    uint16_t head;
+    uint16_t filled;
+
+    key = irq_lock();
+    s_dirty = false;
+    head = s_head;
+    filled = s_filled;
+    irq_unlock(key);
+
+    /* 屏还没满：内容从第 0 行往下排（新行只占一行，屏上其它行原地不动）；
+     * 屏满了：窗口底对齐，新行到来时整屏上移一行（终端式滚动）。 */
+    if (filled >= s_disp_rows) {
+        head = (head + QF_LOG_LINES - (s_disp_rows - 1)) % QF_LOG_LINES;
+    } else if (filled > 0) {
+        head = (head + QF_LOG_LINES - (filled - 1)) % QF_LOG_LINES;
+    }
+
     for (uint16_t row = 0; row < s_disp_rows; row++) {
-        qf_render_line(s_snap[row], qf_color_for_level(s_snap_level[row]));
+        const char *text = s_snap[0];
+        uint8_t level;
+
+        if (row < filled) {
+            uint16_t slot = (head + row) % QF_LOG_LINES;
+
+            key = irq_lock();
+            memcpy(s_snap[0], s_lines[slot], QF_LOG_COLS + 1);
+            level = s_line_level[slot];
+            irq_unlock(key);
+        } else {
+            s_snap[0][0] = '\0';
+            level = LOG_LEVEL_INF;
+        }
+
+        if (s_shown_valid[row]) {
+            if (s_shown_level[row] == level && strcmp(s_shown[row], text) == 0) {
+                continue; /* 屏上这一行已经是对的，不占 SPI */
+            }
+        } else if (text[0] == '\0') {
+            /* 初始化后整屏就是黑的，空行不用写 */
+            s_shown_valid[row] = true;
+            s_shown_level[row] = level;
+            s_shown[row][0] = '\0';
+            continue;
+        }
+
+        qf_render_line(text, qf_color_for_level(level));
 
         if (display_write(s_display, 0, row * QF_LOG_FONT_H, &desc, s_px) < 0) {
-            /* 屏没就绪或 SPI 出错：静默放弃，不要反过来扰乱日志系统 */
+            /* 没写进去就不管了：别把日志系统本身拖垮 */
             return;
         }
+
+        memcpy(s_shown[row], text, QF_LOG_COLS + 1);
+        s_shown_level[row] = level;
+        s_shown_valid[row] = true;
     }
+#endif
 }
 
 static void qf_refresh_handler(struct k_work *work) {
     struct k_work_delayable *dwork = k_work_delayable_from_work(work);
 
+    s_req = false;
+
     if (s_ready) {
         qf_flush();
     }
 
-    k_work_reschedule(dwork, K_MSEC(CONFIG_PROSPECTOR_DISPLAY_LOG_REFRESH_MS));
+    /* 回绕写分片还没画完就马上接着来，别让屏幕停在一半 */
+    k_work_reschedule(dwork, K_MSEC(s_more ? 1 : CONFIG_PROSPECTOR_DISPLAY_LOG_REFRESH_MS));
 }
-
-static K_WORK_DELAYABLE_DEFINE(qf_refresh_work, qf_refresh_handler);
 
 /* 初始化时先把整屏涂黑，避免上电残留的雪花画面 */
 static int qf_blank_screen(void) {

@@ -681,14 +681,50 @@ config PROSPECTOR_DISPLAY_LOG_LINES
       保留最近多少行日志。字高 16 像素，240 像素高的屏正好显示 15 行。
 
 config PROSPECTOR_DISPLAY_LOG_REFRESH_MS
-    int "刷屏周期（毫秒）"
+    int "兜底刷屏周期（毫秒）"
     range 20 2000
-    default 300
+    default 100
     depends on PROSPECTOR_DISPLAY_LOG
     help
-      每隔这么久检查一次是否有新日志，内容变了才刷（整屏 280x240 的
-      RGB565 约 134KB，20MHz SPI 下约 50ms 传完）。空闲时完全不碰 SPI。
-      日志很密集时值太小会长时间占用系统工作队列。
+      正常情况下刷屏是事件驱动的（每攒满一行日志就刷，见
+      PROSPECTOR_DISPLAY_LOG_SETTLE_MS）；这个值只是兜底，防止极端情况下
+      内容变了却没刷。空闲时本模块完全不碰 SPI。
+
+config PROSPECTOR_DISPLAY_LOG_SETTLE_MS
+    int "新日志到刷屏之间的等待（毫秒）"
+    range 1 500
+    default 10
+    depends on PROSPECTOR_DISPLAY_LOG
+    help
+      每写完一整行日志就唤醒刷屏任务，等这么久（期间又来新行也只是顺延到
+      "最后一次新行之后"）才真正写屏，把密集的日志合并成一次刷新。
+      默认 10ms：屏上几乎和串口一样即时，又不会为每一行日志单独开一次刷新。
+      原来的实现是固定 300ms 轮询，所以屏上总像慢了半拍。
+
+config PROSPECTOR_DISPLAY_LOG_ROWS_PER_CYCLE
+    int "每轮最多写几行屏（仅回绕写模式）"
+    range 1 30
+    default 6
+    depends on PROSPECTOR_DISPLAY_LOG
+    help
+      回绕写模式下每轮刷屏最多写多少行，没画完的下一轮（1ms 后）接着画。
+      一行 280 像素宽约 8960 字节，20MHz SPI 下约 3.5ms，取 6 即单次最多
+      占用系统工作队列约 20ms。
+
+config PROSPECTOR_DISPLAY_LOG_WRAP
+    bool "回绕写模式（更省更快，满屏后不再整屏上滚）"
+    default n
+    depends on PROSPECTOR_DISPLAY_LOG
+    help
+      默认（n）：终端式滚动 —— 屏不满时逐行往下填，满了以后新行到来整屏上移
+      一行，观感最像串口终端。代价是满屏后每来一行要重写整屏
+      （约 134KB / 50ms），日志比 ~20 行/秒更密时 SPI 会跟不上。
+
+      y：回绕写 —— 新行写到下一行光标位置，到底后回到第 0 行覆盖最旧内容。
+      任何时刻一轮只写一行（约 3.5ms），日志再密也不会拖慢键盘和无线；
+      代价是满屏后不是"整屏上滚"，而是从顶部覆盖（能看到跳变）。
+
+      两种模式在"屏还没满"时都一样：每条日志只写一行。
 
 config PROSPECTOR_DISPLAY_LOG_TIMESTAMP
     bool "屏幕上显示日志时间戳"
