@@ -73,14 +73,19 @@ LV_FONT_DECLARE(lv_font_montserrat_12);
 #define YADS2_LOW_BATTERY_THRESHOLD 10
 
 /* ========== 几何位置（280x240 坐标系） ========== */
-/* 顶部一行：左角 = 左手状态 + BLE 1，中间 = 键盘名，右角 = BLE 2 + 右手状态 */
+/* 顶部两行：第一行是左右手连接状态（圆角屏的左上 / 右上，向内缩进避开圆角弧线），
+ * 第二行是 BLE 指示，两者同一列对齐（左列 "L ✓" / "BLE 1"，右列 "R ✓" / "BLE 2"）；
+ * 中间同高是固定键盘名，与这两列不冲突。 */
 #define YADS2_NAME_Y 8
 #define YADS2_NAME_WIDTH 104
-#define YADS2_PEER_LEFT_X 10
-#define YADS2_PEER_RIGHT_X_OFFSET (-10)
-#define YADS2_BLE_LEFT_X 48
-#define YADS2_BLE_RIGHT_X_OFFSET (-50)
+/* 屏幕是圆角面板：角上的文字要往里让，别被圆角弧线切掉。20px 对 280x240 的
+ * 圆角（约 20px 半径）刚好在弧线内侧；BLE 指示与它们同列，会自动跟着内缩。 */
+#define YADS2_PEER_LEFT_X 20
+#define YADS2_PEER_RIGHT_X_OFFSET (-20)
 #define YADS2_TOP_Y 6
+/* BLE 指示排在左右手状态下方：peer 用 16 号字（行高约 19px），下面一层从 28
+ * 开始；BLE 字号 20（行高约 24px），到底部 52 仍留出层滚筒（55 起）的空当。 */
+#define YADS2_BLE_Y 28
 
 /* 中间：层滚筒 —— 固定 3 行，当前层永远在中间行（上下为相邻层），三行同一字号；
  * 当前层白色高亮、相邻层灰色。超出 keymap 范围的行隐藏，因此高亮始终居中。
@@ -94,7 +99,7 @@ LV_FONT_DECLARE(lv_font_montserrat_12);
 
 /* 顶部中间的名字写死，不再跟随广播里的 keyboard_name（CONFIG_ZMK_KEYBOARD_NAME）：
  * Prospector 在这里是 dongle/接收器，显示对端键盘名没有意义。 */
-#define YADS2_FIXED_NAME "Prospector DG"
+#define YADS2_FIXED_NAME "Prospector Receiver"
 
 /* NerdFont 修饰键行，在层滚筒下方 */
 #define YADS2_MOD_Y 160
@@ -534,8 +539,8 @@ static void yads2_update_modifiers(uint8_t modifier_flags) {
 /* ========== 创建 ========== */
 
 static void yads2_create_top_row(lv_obj_t *parent) {
-    /* 左右手状态放最外侧角上，BLE 指示在其内侧并排：
-     * 左角 = "L ✓ BLE 1"，右角 = "BLE 2 R ✓"（位置本身即代表左右手） */
+    /* 左右手状态放最外侧角上，BLE 指示排在它正下方同一列（两行而不是挤在一行）：
+     * 左列 = "L ✓" / "BLE 1"，右列 = "R ✓" / "BLE 2"（位置本身即代表左右手） */
     for (int slot = 0; slot < 2; slot++) {
         peer_labels[slot] = lv_label_create(parent);
         lv_obj_set_style_text_font(peer_labels[slot], &lv_font_montserrat_16, LV_PART_MAIN);
@@ -555,10 +560,12 @@ static void yads2_create_top_row(lv_obj_t *parent) {
         lv_obj_set_style_text_color(ble_slot_labels[slot], lv_color_hex(YADS2_COLOR_TEXT),
                                     LV_PART_MAIN);
         if (slot == 0) {
-            lv_obj_set_pos(ble_slot_labels[slot], YADS2_BLE_LEFT_X, YADS2_TOP_Y);
+            /* 与上面的 "L ✓" 左对齐，下移一行 */
+            lv_obj_set_pos(ble_slot_labels[slot], YADS2_PEER_LEFT_X, YADS2_BLE_Y);
         } else {
-            lv_obj_align(ble_slot_labels[slot], LV_ALIGN_TOP_RIGHT, YADS2_BLE_RIGHT_X_OFFSET,
-                         YADS2_TOP_Y);
+            /* 与上面的 "R ✓" 右对齐，下移一行 */
+            lv_obj_align(ble_slot_labels[slot], LV_ALIGN_TOP_RIGHT, YADS2_PEER_RIGHT_X_OFFSET,
+                         YADS2_BLE_Y);
         }
         lv_label_set_text_static(ble_slot_labels[slot], stbuf_ble_slots[slot]);
     }
