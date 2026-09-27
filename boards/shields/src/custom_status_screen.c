@@ -3550,10 +3550,13 @@ static void swipe_process_timer_cb(lv_timer_t *timer) {
 /* ========== 日志页（第 6 页）==========
  *
  * 内容来自 qf_display_log.c 的采集层（和 USB 串口/日志固件是同一批日志），
- * 这里只负责用 LVGL 画出来：等宽字体 lv_font_unscii_8（每字符 8px），
- * CONFIG_PROSPECTOR_DISPLAY_LOG_MAX_COLS（默认 28）字符 x 8px = 224px 正好
- * 放进 280px 宽的屏；CONFIG_PROSPECTOR_DISPLAY_LOG_LINES（默认 15）行 x 8px
- * = 120px。屏归 LVGL，所以这里绝不用 display_write()（那是日志固件的事）。
+ * 这里只负责用 LVGL 画出来。字体用等宽 lv_font_unscii_8，真实度量是每字符
+ * 8px 宽、9px 行高（LVGL 内部 adv_w = 128/16、line_height = 9），于是
+ *   CONFIG_PROSPECTOR_DISPLAY_LOG_MAX_COLS（35）x 8px = 280px  铺满屏宽
+ *   CONFIG_PROSPECTOR_DISPLAY_LOG_LINES   （26）x 9px = 234px  铺满屏高
+ * 正好占满 280x240 的面板。正文从 (0,0) 起、上面不放标题条：标题会额外占掉
+ * 20px，等于白白少两行日志，日志页也就不需要它。
+ * 屏归 LVGL，所以这里绝不用 display_write()（那是日志固件的事）。
  *
  * 默认不显示：不进日志页时屏上行为和以前完全一样。
  * 切换由 display_log_page_show() 请求，见 custom_status_screen.h。
@@ -3574,15 +3577,9 @@ static void create_log_page_widgets(void) {
         return;
     }
 
-    /* 标题：顺便占住顶部，正文从 y=20 开始不会和它重叠 */
-    lv_obj_t *title = lv_label_create(screen_obj);
-
-    lv_obj_set_style_text_font(title, &lv_font_montserrat_16, 0);
-    lv_obj_set_style_text_color(title, lv_color_make(0xA0, 0xA0, 0xA0), 0);
-    lv_label_set_text(title, "LOG");
-    lv_obj_set_pos(title, 0, 0);
-
-    /* 正文：一行一条日志，行距 0、定宽 280 + CLIP，和字符网格严格对齐 */
+    /* 正文：一行一条日志，行距 0、定宽 280 + CLIP，和字符网格严格对齐。
+     * 从 (0,0) 开始画：26 行 x 9px = 234px 正好铺满屏高，所以上面不再放
+     * "LOG" 标题条 —— 那会占掉 20px，等于白白少两行日志。 */
     log_label = lv_label_create(screen_obj);
     lv_obj_set_style_text_font(log_label, &lv_font_unscii_8, 0);
     lv_obj_set_style_text_color(log_label, lv_color_hex(0x00FF00), 0);
@@ -3590,7 +3587,7 @@ static void create_log_page_widgets(void) {
     lv_obj_set_style_text_align(log_label, LV_TEXT_ALIGN_LEFT, 0);
     lv_obj_set_width(log_label, 280);
     lv_label_set_long_mode(log_label, LV_LABEL_LONG_CLIP);
-    lv_obj_set_pos(log_label, 0, 20);
+    lv_obj_set_pos(log_label, 0, 0);
 
     /* 立刻画一次现有内容：先丢掉切页之前攒下的脏标志，再强制取一次快照 */
     qf_display_log_take_dirty();

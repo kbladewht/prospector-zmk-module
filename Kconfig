@@ -666,8 +666,13 @@ config PROSPECTOR_DISPLAY_LOG_PAGE
     bool "正常固件里的日志页（LVGL 屏上翻日志）"
     default y
     depends on ZMK_DISPLAY && DISPLAY
-    # 日志页用等宽字体 lv_font_unscii_8 才对得齐（每字符 8px：(MAX_COLS=28)*8
-    # = 224px 正好放进 280px 宽的屏）。写死依赖，省得手工忘开字体导致链接失败。
+    # 日志页用等宽字体 lv_font_unscii_8 才对得齐。它的真实度量是每字符 8px 宽、
+    # 9px 行高（LVGL 内部 adv_w = 128/16 = 8px、line_height = 9），于是
+    #   (MAX_COLS = 35) * 8px = 280px  正好铺满 280px 屏宽
+    #   (LINES    = 26) * 9px = 234px  铺满 240px 屏高
+    # 注意别换成 lv_font_unscii_16：那是全宽字体（adv_w = 256/16 = 16px），
+    # 一行只放得下 17 个字符，行高也变成 17px。
+    # 写死依赖，省得手工忘开字体导致链接失败。
     select LV_FONT_UNSCII_8
     help
       正常固件里多出一"页日志"：屏仍归 LVGL（状态屏照常工作），日志采集复用
@@ -694,9 +699,16 @@ config PROSPECTOR_DISPLAY_LOG_MAX_COLS
     default 28
     depends on PROSPECTOR_DISPLAY_LOG || PROSPECTOR_DISPLAY_LOG_PAGE
     help
-      每个字符 10 像素宽，280 像素宽的屏正好 28 个字符。超宽的行自动折行
-      （和串口终端一样）。该值也决定行像素缓冲的静态内存占用
-      （RAM ≈ MAX_COLS * 10 * 16 * 2 字节），不要设太大。
+      保留每行最多多少字符，超宽的行自动折行（和串口终端一样）。
+
+      两种模式用的字体不同，铺满 280 像素屏宽所需的字符数也不同：
+      - PROSPECTOR_DISPLAY_LOG_PAGE（LVGL 日志页，等宽字体 lv_font_unscii_8，
+        每字符 8px）：设 35，35 x 8px = 280px 正好铺满整屏宽。
+      - PROSPECTOR_DISPLAY_LOG（专用日志固件，自带 10x16 点阵）：
+        280 / 10 = 28 个字符。它自己会再按 cap.x_resolution / 10 取 MIN
+        （见 qf_display_log.c 的 s_cols），所以这里设大也不会画出屏外。
+      该值还决定行像素缓冲的静态内存占用（仅日志固件模式用到该缓冲：
+      RAM ≈ MAX_COLS * 10 * 16 * 2 字节），不要设太大。
 
 config PROSPECTOR_DISPLAY_LOG_LINES
     int "环形行缓冲的行数"
@@ -704,7 +716,11 @@ config PROSPECTOR_DISPLAY_LOG_LINES
     default 15
     depends on PROSPECTOR_DISPLAY_LOG || PROSPECTOR_DISPLAY_LOG_PAGE
     help
-      保留最近多少行日志。字高 16 像素，240 像素高的屏正好显示 15 行。
+      保留最近多少行日志。两种模式行高不同，铺满 240 像素屏高所需行数也不同：
+      - PROSPECTOR_DISPLAY_LOG_PAGE：lv_font_unscii_8 行高 9px，设 26，
+        26 x 9px = 234px 铺满整屏高。
+      - PROSPECTOR_DISPLAY_LOG：自带点阵行高 16px，240 / 16 = 15 行；
+        它自己会再按 cap.y_resolution / 16 取 MIN（s_disp_rows）。
 
 config PROSPECTOR_DISPLAY_LOG_REFRESH_MS
     int "兜底刷屏周期（毫秒）"
