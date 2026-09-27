@@ -949,9 +949,13 @@ lv_obj_t *zmk_display_status_screen(void) {
     /* Log page: handles display_log_page_show() requests and repaints the text
      * when new log lines arrive. Same design as the timers above - a request
      * flag is set from any context, this LVGL timer does the actual LVGL work. */
+    /* 25ms：日志页只在"有新行"时才会碰 LVGL（dirty 标志门控），周期本身几乎
+     * 不花 CPU，但把"新行 -> 上屏"的延迟从 100ms 压到 25ms。
+     * 注意这个 timer 由 LVGL 的 timer handler 驱动，而 handler 的调用节奏又受
+     * CONFIG_LV_DEF_REFR_PERIOD 影响（见 prospector_e73.conf），两者要一起压。 */
     if (!log_page_timer) {
-        log_page_timer = lv_timer_create(log_page_timer_cb, 100, NULL);
-        LOG_INF("Log page timer registered (100ms interval)");
+        log_page_timer = lv_timer_create(log_page_timer_cb, 25, NULL);
+        LOG_INF("Log page timer registered (25ms interval)");
     }
 #endif
 
@@ -3600,7 +3604,10 @@ static void create_log_page_widgets(void) {
 
     int lines = qf_display_log_snapshot(log_text, sizeof(log_text));
 
-    lv_label_set_text(log_label, log_text);
+    /* 用 _static（后面刷新也用同一个版本）：文本不复制、不占堆。
+     * 一旦用过 _static（label->static_txt=1），就绝不能再对这个 label 用动态版
+     * lv_label_set_text()/lv_label_set_text_fmt() —— 那会 lv_free(log_text)。 */
+    lv_label_set_text_static(log_label, log_text);
 
     LOG_INF("Log page widgets created (%d lines buffered)", lines);
 }
@@ -3617,7 +3624,12 @@ static void log_page_refresh(void) {
     }
 
     qf_display_log_snapshot(log_text, sizeof(log_text));
-    lv_label_set_text(log_label, log_text);
+    /* _static：文本就是 log_text 本身，零拷贝、零 malloc。日志页每来一行都要
+     * 整块重排（420 字符），这里省掉的是每次约 420 字节的 malloc/free 和堆碎片，
+     * 避免和 LVGL 其它控件抢那块固定内存池（CONFIG_LV_Z_MEM_POOL_SIZE）。
+     * lv_label_set_text_static() 内部照样会调 lv_label_refr_text()，
+     * 所以 log_text 内容变了能正常重排刷新。 */
+    lv_label_set_text_static(log_label, log_text);
 }
 
 static void log_page_timer_cb(lv_timer_t *timer) {

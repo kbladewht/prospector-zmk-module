@@ -123,7 +123,10 @@
         st7789v: st7789v@0 {
             compatible = "sitronix,st7789v";
             reg = <0>;
-            mipi-max-frequency = <20000000>;
+            /* nRF52840 的 SPIM3 最高 32MHz，ST7789V 本身支持到 62.5MHz。
+             * 20MHz 下一帧全屏 280x240x2B=134KB 要 ~54ms，日志页滚动会明显发顿；
+             * 提到 32MHz 后同样一帧 ~34ms（约 29fps），滚动顺很多。 */
+            mipi-max-frequency = <32000000>;
             mipi-mode = "MIPI_DBI_MODE_SPI_4WIRE";
             width = <280>;
             height = <240>;
