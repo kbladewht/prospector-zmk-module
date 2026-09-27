@@ -82,9 +82,14 @@ if(CONFIG_SHIELD_PROSPECTOR_e73 OR CONFIG_SHIELD_PROSPECTOR_SCANNER)
         ${PROSPECTOR_SHIELD_SRC}/fonts_carrefinho/Symbols_Semibold_32.c
     )
 
-    # 纯日志固件：把 7789 屏变成本文件画的字符控制台（需要 CONFIG_ZMK_DISPLAY=n，
-    # 由 CONFIG_PROSPECTOR_DISPLAY_LOG 控制，默认关，不影响正常键盘固件）
-    target_sources_ifdef(CONFIG_PROSPECTOR_DISPLAY_LOG app PRIVATE ${PROSPECTOR_SHIELD_SRC}/qf_display_log.c)
+    # 日志屏的两条路（都不影响正常键盘固件）：
+    #  1) CONFIG_PROSPECTOR_DISPLAY_LOG=y      专用日志固件：屏归 qf_display_log.c，
+    #     需同时 CONFIG_ZMK_DISPLAY=n，点阵字体也由它自己用
+    #  2) CONFIG_PROSPECTOR_DISPLAY_LOG_PAGE=y 正常固件里的"日志页"：屏仍归 LVGL，
+    #     该文件只提供日志采集，文本交给 lv_label 渲染，所以不需要自带点阵字体
+    if(CONFIG_PROSPECTOR_DISPLAY_LOG OR CONFIG_PROSPECTOR_DISPLAY_LOG_PAGE)
+        target_sources(app PRIVATE ${PROSPECTOR_SHIELD_SRC}/qf_display_log.c)
+    endif()
     target_sources_ifdef(CONFIG_PROSPECTOR_DISPLAY_LOG app PRIVATE ${PROSPECTOR_SHIELD_SRC}/qf_display_log_font.c)
 
     # Include path for the shared sources (headers live next to the .c files)
