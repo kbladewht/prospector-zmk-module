@@ -92,6 +92,10 @@ LV_FONT_DECLARE(lv_font_montserrat_12);
 #define YADS2_LAYER_ROW_STEP 35  /* 行距（FG_Medium_26 行高 < 该值，留一点呼吸感） */
 #define YADS2_LAYER_ROW_WIDTH 272
 
+/* 顶部中间的名字写死，不再跟随广播里的 keyboard_name（CONFIG_ZMK_KEYBOARD_NAME）：
+ * Prospector 在这里是 dongle/接收器，显示对端键盘名没有意义。 */
+#define YADS2_FIXED_NAME "Prospector DG"
+
 /* NerdFont 修饰键行，在层滚筒下方 */
 #define YADS2_MOD_Y 160
 
@@ -148,7 +152,6 @@ static const char *mod_symbols[4] = {
  * 用 lv_label_set_text_static() 可避免 LVGL 每条广播都重新分配标签文本，
  * 否则长时间运行会让内存池碎片化。 */
 static char stbuf_layer_rows[YADS2_LAYER_ROW_COUNT][24] = {{""}, {""}, {""}};
-static char stbuf_name[24] = "Receiver...";
 static char stbuf_peer[2][8] = {{"L "}, {"R "}};
 static char stbuf_ble_slots[2][12] = {{"BLE 1"}, {"BLE 2"}};
 static char stbuf_mod[64] = "";
@@ -431,14 +434,14 @@ static void yads2_update_name(const char *keyboard_name) {
         return;
     }
 
+    /* 文本固定为 YADS2_FIXED_NAME（Prospector DG），只有颜色还反映连接状态：
+     * 收到键盘数据时用正常文字色，完全没有数据时用暗色。 */
     if (keyboard_name && keyboard_name[0]) {
-        snprintf(stbuf_name, sizeof(stbuf_name), "%s", keyboard_name);
         lv_obj_set_style_text_color(name_label, lv_color_hex(YADS2_COLOR_TEXT), LV_PART_MAIN);
     } else {
-        snprintf(stbuf_name, sizeof(stbuf_name), "Receiver...");
         lv_obj_set_style_text_color(name_label, lv_color_hex(YADS2_COLOR_DIM), LV_PART_MAIN);
     }
-    lv_label_set_text_static(name_label, stbuf_name);
+    lv_label_set_text_static(name_label, YADS2_FIXED_NAME);
 }
 
 /* ========== 层滚筒（层名来自本机 keymap） ========== */
@@ -560,7 +563,8 @@ static void yads2_create_top_row(lv_obj_t *parent) {
         lv_label_set_text_static(ble_slot_labels[slot], stbuf_ble_slots[slot]);
     }
 
-    /* 键盘名（顶部中间）—— 用内置字体：名字是任意文本，子集字体覆盖不全 */
+    /* 顶部中间的固定名字（YADS2_FIXED_NAME = "Prospector DG"）—— 用内置字体：
+     * 文本是任意字符串，子集字体覆盖不全 */
     name_label = lv_label_create(parent);
     lv_obj_set_style_text_font(name_label, &lv_font_montserrat_16, LV_PART_MAIN);
     lv_obj_set_style_text_color(name_label, lv_color_hex(YADS2_COLOR_DIM), LV_PART_MAIN);
@@ -568,7 +572,7 @@ static void yads2_create_top_row(lv_obj_t *parent) {
     lv_label_set_long_mode(name_label, LV_LABEL_LONG_CLIP);
     lv_obj_set_width(name_label, YADS2_NAME_WIDTH);
     lv_obj_align(name_label, LV_ALIGN_TOP_MID, 0, YADS2_NAME_Y);
-    lv_label_set_text_static(name_label, stbuf_name);
+    lv_label_set_text_static(name_label, YADS2_FIXED_NAME);
 }
 
 static void yads2_create_center(lv_obj_t *parent) {
