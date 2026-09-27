@@ -517,9 +517,15 @@ static void qf_set_level(uint8_t level) {
 static void qf_backend_process(const struct log_backend *const backend,
                                union log_msg_generic *msg) {
     /* 不传 LOG_OUTPUT_FLAG_COLORS：屏上要的是纯文本，不要 ANSI 转义序列 */
-    uint32_t flags = LOG_OUTPUT_FLAG_LEVEL | LOG_OUTPUT_FLAG_CRLF_LFONLY;
+    /* 屏上一行只有 28 个字符，前缀能省就省：默认不打 "<inf> " 这种等级前缀。
+     * 等级仍然通过颜色区分（qf_set_level() 单独取 level，与 flags 无关）。 */
+    uint32_t flags = LOG_OUTPUT_FLAG_CRLF_LFONLY;
 
     ARG_UNUSED(backend);
+
+    if (IS_ENABLED(CONFIG_PROSPECTOR_DISPLAY_LOG_LEVEL_PREFIX)) {
+        flags |= LOG_OUTPUT_FLAG_LEVEL;
+    }
 
     if (IS_ENABLED(CONFIG_PROSPECTOR_DISPLAY_LOG_TIMESTAMP)) {
         flags |= LOG_OUTPUT_FLAG_TIMESTAMP;

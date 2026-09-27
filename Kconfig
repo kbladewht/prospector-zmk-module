@@ -726,13 +726,22 @@ config PROSPECTOR_DISPLAY_LOG_WRAP
 
       两种模式在"屏还没满"时都一样：每条日志只写一行。
 
+config PROSPECTOR_DISPLAY_LOG_LEVEL_PREFIX
+    bool "屏幕上显示 <inf> 这类日志等级前缀"
+    default n
+    depends on PROSPECTOR_DISPLAY_LOG
+    help
+      默认关闭。280 像素宽只放得下 28 个字符，而 "<inf> " 前缀就要占 6 个，
+      关掉能明显减少折行（日志等级仍然用颜色区分，见
+      PROSPECTOR_DISPLAY_LOG_COLORS）。
+
 config PROSPECTOR_DISPLAY_LOG_TIMESTAMP
     bool "屏幕上显示日志时间戳"
     default n
     depends on PROSPECTOR_DISPLAY_LOG
     help
       时间戳形如 [00:00:12.345,678]，要占 21 个字符（接近一整行），所以
-      默认关闭：只显示 <inf> 这类等级前缀和模块名。
+      默认关闭。
 
 config PROSPECTOR_DISPLAY_LOG_COLORS
     bool "按日志等级给文字着色"
