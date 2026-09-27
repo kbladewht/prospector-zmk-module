@@ -46,6 +46,7 @@ LOG_MODULE_REGISTER(yads2_layout, CONFIG_ZMK_LOG_LEVEL);
  * LVGL 会把缺失字形画成占位方框（CONFIG_LV_USE_FONT_PLACEHOLDER=y）。
  * 这些子集字体只用于固定的全大写/数字字符串。 */
 LV_FONT_DECLARE(lv_font_montserrat_16);
+LV_FONT_DECLARE(lv_font_montserrat_20);
 LV_FONT_DECLARE(lv_font_montserrat_28);
 /* RSSI 文本用 12 号：子集字体（DINish/FG）没有小写字母，"-62dBm" 必须有 */
 LV_FONT_DECLARE(lv_font_montserrat_12);
@@ -56,6 +57,9 @@ LV_FONT_DECLARE(lv_font_montserrat_12);
  * USB 一定在供电，BLE 指示由 yads2_layout_set_ble() 驱动。 */
 #define YADS2_COLOR_TEXT          0xFFFFFF
 #define YADS2_COLOR_DIM           0x7B7D93
+/* 顶部设备名（两行 "Prospector" / "Receiver"）：Material Light Blue 300，
+ * 暗底上明亮清晰，又不像纯白那样抢中间层滚筒的视线 */
+#define YADS2_COLOR_NAME          0x4FC3F7
 #define YADS2_COLOR_PEER_OK       0x00FF00 /* 该手已连接 */
 /* 电池配色 = 红绿灯。文字与进度条同色，进度条在填充端渐变到更亮的同色。 */
 #define YADS2_COLOR_BATTERY_HIGH   0x00E676 /* > 50%  */
@@ -75,9 +79,12 @@ LV_FONT_DECLARE(lv_font_montserrat_12);
 /* ========== 几何位置（280x240 坐标系） ========== */
 /* 顶部两行：第一行是左右手连接状态（圆角屏的左上 / 右上，向内缩进避开圆角弧线），
  * 第二行是 BLE 指示，两者同一列对齐（左列 "L ✓" / "BLE 1"，右列 "R ✓" / "BLE 2"）；
- * 中间同高是固定键盘名，与这两列不冲突。 */
-#define YADS2_NAME_Y 8
-#define YADS2_NAME_WIDTH 104
+ * 中间是两行居中的设备名（见 YADS2_NAME_TEXT），与这两列不冲突。 */
+#define YADS2_NAME_Y 6
+/* 设备名宽度：两行文字各自居中，可用宽度受两侧列限制 —— 第二行夹在 "BLE 1"/"BLE 2"
+ * 之间（约 60..220 = 160px），取 146 保证 "Prospector"(20 号字约 110px) 与
+ * "Receiver" 都能完整显示（原来单行 104 宽 + LONG_CLIP 会把两边字符裁掉）。 */
+#define YADS2_NAME_WIDTH 146
 /* 屏幕是圆角面板：角上的文字要往里让，别被圆角弧线切掉。20px 对 280x240 的
  * 圆角（约 20px 半径）刚好在弧线内侧；BLE 指示与它们同列，会自动跟着内缩。 */
 #define YADS2_PEER_LEFT_X 20
@@ -97,9 +104,10 @@ LV_FONT_DECLARE(lv_font_montserrat_12);
 #define YADS2_LAYER_ROW_STEP 35  /* 行距（FG_Medium_26 行高 < 该值，留一点呼吸感） */
 #define YADS2_LAYER_ROW_WIDTH 272
 
-/* 顶部中间的名字写死，不再跟随广播里的 keyboard_name（CONFIG_ZMK_KEYBOARD_NAME）：
- * Prospector 在这里是 dongle/接收器，显示对端键盘名没有意义。 */
-#define YADS2_FIXED_NAME "Prospector Receiver"
+/* 顶部中间的设备名写死（两行居中显示），不再跟随广播里的 keyboard_name
+ * （CONFIG_ZMK_KEYBOARD_NAME）：Prospector 在这里是 dongle/接收器，显示对端
+ * 键盘名没有意义。文本里的 \n 是 LVGL label 的换行符。 */
+#define YADS2_NAME_TEXT "Prospector\nReceiver"
 
 /* NerdFont 修饰键行，在层滚筒下方 */
 #define YADS2_MOD_Y 160
@@ -439,14 +447,14 @@ static void yads2_update_name(const char *keyboard_name) {
         return;
     }
 
-    /* 文本固定为 YADS2_FIXED_NAME（Prospector DG），只有颜色还反映连接状态：
-     * 收到键盘数据时用正常文字色，完全没有数据时用暗色。 */
+    /* 文本固定为 YADS2_NAME_TEXT（两行：Prospector / Receiver），只有颜色还反映
+     * 连接状态：收到键盘数据时用设备名色，完全没有数据时用暗色。 */
     if (keyboard_name && keyboard_name[0]) {
-        lv_obj_set_style_text_color(name_label, lv_color_hex(YADS2_COLOR_TEXT), LV_PART_MAIN);
+        lv_obj_set_style_text_color(name_label, lv_color_hex(YADS2_COLOR_NAME), LV_PART_MAIN);
     } else {
         lv_obj_set_style_text_color(name_label, lv_color_hex(YADS2_COLOR_DIM), LV_PART_MAIN);
     }
-    lv_label_set_text_static(name_label, YADS2_FIXED_NAME);
+    lv_label_set_text_static(name_label, YADS2_NAME_TEXT);
 }
 
 /* ========== 层滚筒（层名来自本机 keymap） ========== */
@@ -570,16 +578,17 @@ static void yads2_create_top_row(lv_obj_t *parent) {
         lv_label_set_text_static(ble_slot_labels[slot], stbuf_ble_slots[slot]);
     }
 
-    /* 顶部中间的固定名字（YADS2_FIXED_NAME = "Prospector DG"）—— 用内置字体：
-     * 文本是任意字符串，子集字体覆盖不全 */
+    /* 顶部中间的设备名：两行居中（"Prospector" / "Receiver"），用 20 号字（比原来
+     * 的 16 号大一号），行高约 24px —— 从 y=6 起占 6..54，层滚筒（55 起）刚好让开。
+     * 必须用内置字体：文本是任意字符串，子集字体（DINish/FG）没有小写字母。 */
     name_label = lv_label_create(parent);
-    lv_obj_set_style_text_font(name_label, &lv_font_montserrat_16, LV_PART_MAIN);
+    lv_obj_set_style_text_font(name_label, &lv_font_montserrat_20, LV_PART_MAIN);
     lv_obj_set_style_text_color(name_label, lv_color_hex(YADS2_COLOR_DIM), LV_PART_MAIN);
     lv_obj_set_style_text_align(name_label, LV_TEXT_ALIGN_CENTER, LV_PART_MAIN);
     lv_label_set_long_mode(name_label, LV_LABEL_LONG_CLIP);
     lv_obj_set_width(name_label, YADS2_NAME_WIDTH);
     lv_obj_align(name_label, LV_ALIGN_TOP_MID, 0, YADS2_NAME_Y);
-    lv_label_set_text_static(name_label, YADS2_FIXED_NAME);
+    lv_label_set_text_static(name_label, YADS2_NAME_TEXT);
 }
 
 static void yads2_create_center(lv_obj_t *parent) {
