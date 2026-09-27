@@ -39,9 +39,6 @@ if(CONFIG_SHIELD_PROSPECTOR_e73 OR CONFIG_SHIELD_PROSPECTOR_SCANNER)
     # Swipe gesture event (ZMK event system - thread-safe)
     # target_sources_ifdef(CONFIG_ZMK_DISPLAY_STATUS_SCREEN_CUSTOM app PRIVATE ${PROSPECTOR_SHIELD_SRC}/events/swipe_gesture_event.c)
 
-    # Touch handler (when touch is enabled)
-    # target_sources_ifdef(CONFIG_PROSPECTOR_TOUCH_ENABLED app PRIVATE ${PROSPECTOR_SHIELD_SRC}/touch_handler.c)
-
     # Keyboard state tracking lives in the module (src/scanner_core.c) so that
     # every scanner shield shares it - nothing shield-local to add here.
 

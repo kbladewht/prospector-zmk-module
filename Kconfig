@@ -235,21 +235,8 @@ config PROSPECTOR_MODE_SCANNER
       Enable scanner mode to receive status advertisements from ZMK keyboards.
       In this mode, Prospector acts as a standalone status display device.
 
-config PROSPECTOR_TOUCH_ENABLED
-    bool "Enable touch panel support"
-    default n
-    depends on PROSPECTOR_MODE_SCANNER
-    select INPUT
-    select INPUT_CST816S
-    select INPUT_CST816S_INTERRUPT
-    select ZMK_POINTING
-    help
-      Enable touch panel support for swipe gestures and settings screens.
-      When disabled, the scanner displays status only without user interaction.
-      Touch-enabled version includes: swipe navigation, display settings, system settings.
-      Non-touch version shows: main status display with signal strength widget.
-
-      This automatically enables INPUT, INPUT_CST816S drivers when selected.
+# NOTE: CONFIG_PROSPECTOR_TOUCH_ENABLED (CST816S 触摸屏 / 滑动切页 / 设置页) 已经
+# 整体移除，不再存在这个选项。屏幕只做状态显示，没有用户交互。
 
 config PROSPECTOR_DEFAULT_LAYOUT
     int "Default display layout"
@@ -258,8 +245,8 @@ config PROSPECTOR_DEFAULT_LAYOUT
     # depends on PROSPECTOR_MODE_SCANNER
     help
       Select the default display layout at startup.
-      In touch mode, this sets the initial layout (changeable via swipe).
-      In non-touch mode, this layout is fixed for the session.
+      The layout is fixed for the session - touch input (and with it the in-device
+      layout switcher) has been removed.
 
       0 = YADS (original status display)
       1 = Field (animated line segments driven by WPM)
