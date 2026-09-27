@@ -10,10 +10,6 @@
  * - Display Settings → UP → Main Screen
  * - Quick Actions → LEFT → Main Screen
  *
- * CRITICAL DESIGN PRINCIPLES (from CLAUDE.md):
- * 1. ISR/Callback から LVGL API を呼ばない - フラグを立てるだけ
- * 2. すべての処理は Main Task (LVGL timer) で実行
- * 3. コンテナを使用しない - すべて絶対座標で配置
  */
 
 #include <zephyr/kernel.h>
@@ -39,6 +35,8 @@
 #include "prospector_layouts.h"  /* Carrefinho-inspired display layouts */
 #include "yads2_layout.h"        /* yads2_layout_refresh_rssi()（信号栏定时兜底） */
 #include "fault_recovery.h"      /* Crash recovery + display watchdog feed */
+#include "custom_status_screen.h" /* display_log_page_show()/is_visible() */
+#include "qf_display_log.h"       /* 日志页的数据来源（qf_display_log.c 的采集层） */
 
 LOG_MODULE_REGISTER(display_screen, LOG_LEVEL_INF);
 
@@ -59,6 +57,7 @@ enum screen_state {
     SCREEN_SYSTEM_SETTINGS,
     SCREEN_KEYBOARD_SELECT,
     SCREEN_PROSPECTOR_DISPLAY,
+    SCREEN_LOG, /* 日志页：数据来自 qf_display_log.c，见 display_log_page_show() */
 };
 
 static enum screen_state current_screen = SCREEN_MAIN;
@@ -73,6 +72,17 @@ volatile bool prospector_display_active = false;
 /* Pending swipe direction - set by ISR listener, processed by LVGL timer */
 static volatile enum swipe_direction pending_swipe = SWIPE_DIRECTION_NONE;
 static lv_timer_t *swipe_process_timer = NULL;
+
+#if IS_ENABLED(CONFIG_PROSPECTOR_DISPLAY_LOG_PAGE)
+/* Log page request - set by display_log_page_show() from any context
+ * (including ISR), processed by log_page_timer_cb() in the LVGL thread.
+ * -1 = no request, 0 = hide, 1 = show. Same design as pending_swipe above. */
+static volatile int pending_log_page = -1;
+/* Which normal screen to return to when leaving the log page */
+static enum screen_state log_page_prev_screen = SCREEN_MAIN;
+static lv_timer_t *log_page_timer = NULL;
+static void log_page_timer_cb(lv_timer_t *timer);
+#endif
 
 /* Auto brightness timer - reads sensor and adjusts brightness when auto mode enabled */
 /* Auto brightness is toggled from the touch-only "Display Settings" screen, so
@@ -934,6 +944,16 @@ lv_obj_t *zmk_display_status_screen(void) {
         pending_update_timer = lv_timer_create(pending_update_timer_cb, 100, NULL);
         LOG_INF("Pending update timer registered (100ms interval)");
     }
+
+#if IS_ENABLED(CONFIG_PROSPECTOR_DISPLAY_LOG_PAGE)
+    /* Log page: handles display_log_page_show() requests and repaints the text
+     * when new log lines arrive. Same design as the timers above - a request
+     * flag is set from any context, this LVGL timer does the actual LVGL work. */
+    if (!log_page_timer) {
+        log_page_timer = lv_timer_create(log_page_timer_cb, 100, NULL);
+        LOG_INF("Log page timer registered (100ms interval)");
+    }
+#endif
 
     return screen;
 }
@@ -3525,6 +3545,157 @@ static void swipe_process_timer_cb(lv_timer_t *timer) {
 
     /* Clear transition flag */
     transition_in_progress = false;
+}
+
+/* ========== 日志页（第 6 页）==========
+ *
+ * 内容来自 qf_display_log.c 的采集层（和 USB 串口/日志固件是同一批日志），
+ * 这里只负责用 LVGL 画出来：等宽字体 lv_font_unscii_8（每字符 8px），
+ * CONFIG_PROSPECTOR_DISPLAY_LOG_MAX_COLS（默认 28）字符 x 8px = 224px 正好
+ * 放进 280px 宽的屏；CONFIG_PROSPECTOR_DISPLAY_LOG_LINES（默认 15）行 x 8px
+ * = 120px。屏归 LVGL，所以这里绝不用 display_write()（那是日志固件的事）。
+ *
+ * 默认不显示：不进日志页时屏上行为和以前完全一样。
+ * 切换由 display_log_page_show() 请求，见 custom_status_screen.h。
+ */
+#if IS_ENABLED(CONFIG_PROSPECTOR_DISPLAY_LOG_PAGE)
+
+/* 快照缓冲：LINES 行 x (MAX_COLS + 1) 字符 + 行间 '\n' + 结尾 '\0' */
+static char log_text[QF_DISPLAY_LOG_TEXT_MAX];
+static lv_obj_t *log_label = NULL;
+
+/* 正文用等宽字体，否则日志列对不齐。
+ * LV_FONT_DECLARE 让这里不依赖 lv_conf 是否已声明；字体本身由 Kconfig 的
+ * "select LV_FONT_UNSCII_8" 保证会被编进固件。 */
+LV_FONT_DECLARE(lv_font_unscii_8);
+
+static void create_log_page_widgets(void) {
+    if (!screen_obj) {
+        return;
+    }
+
+    /* 标题：顺便占住顶部，正文从 y=20 开始不会和它重叠 */
+    lv_obj_t *title = lv_label_create(screen_obj);
+
+    lv_obj_set_style_text_font(title, &lv_font_montserrat_16, 0);
+    lv_obj_set_style_text_color(title, lv_color_make(0xA0, 0xA0, 0xA0), 0);
+    lv_label_set_text(title, "LOG");
+    lv_obj_set_pos(title, 0, 0);
+
+    /* 正文：一行一条日志，行距 0、定宽 280 + CLIP，和字符网格严格对齐 */
+    log_label = lv_label_create(screen_obj);
+    lv_obj_set_style_text_font(log_label, &lv_font_unscii_8, 0);
+    lv_obj_set_style_text_color(log_label, lv_color_hex(0x00FF00), 0);
+    lv_obj_set_style_text_line_space(log_label, 0, 0);
+    lv_obj_set_style_text_align(log_label, LV_TEXT_ALIGN_LEFT, 0);
+    lv_obj_set_width(log_label, 280);
+    lv_label_set_long_mode(log_label, LV_LABEL_LONG_CLIP);
+    lv_obj_set_pos(log_label, 0, 20);
+
+    /* 立刻画一次现有内容：先丢掉切页之前攒下的脏标志，再强制取一次快照 */
+    qf_display_log_take_dirty();
+
+    int lines = qf_display_log_snapshot(log_text, sizeof(log_text));
+
+    lv_label_set_text(log_label, log_text);
+
+    LOG_INF("Log page widgets created (%d lines buffered)", lines);
+}
+
+static void destroy_log_page_widgets(void) {
+    /* 控件随 lv_obj_clean(screen_obj) 一起销毁，这里只清指针 */
+    log_label = NULL;
+}
+
+/* 有新日志才碰 LVGL（qf_display_log_take_dirty() 读走即清） */
+static void log_page_refresh(void) {
+    if (!log_label || !qf_display_log_take_dirty()) {
+        return;
+    }
+
+    qf_display_log_snapshot(log_text, sizeof(log_text));
+    lv_label_set_text(log_label, log_text);
+}
+
+static void log_page_timer_cb(lv_timer_t *timer) {
+    ARG_UNUSED(timer);
+
+    /* 1) 处理切换请求（display_log_page_show() 只置标志） */
+    if (pending_log_page >= 0) {
+        bool show = (pending_log_page == 1);
+
+        pending_log_page = -1;
+
+        if (show && current_screen != SCREEN_LOG) {
+            if (current_screen != SCREEN_MAIN && current_screen != SCREEN_PROSPECTOR_DISPLAY) {
+                /* 触摸专用的设置页不在这里抢：那几页有自己的返回路径 */
+                LOG_WRN("Log page request ignored while on screen=%d", current_screen);
+            } else if (transition_in_progress) {
+                LOG_WRN("Log page request ignored - transition already in progress");
+            } else {
+                log_page_prev_screen = current_screen;
+                transition_in_progress = true;
+
+                if (current_screen == SCREEN_PROSPECTOR_DISPLAY) {
+                    destroy_prospector_display_widgets();
+                } else {
+                    destroy_main_screen_widgets();
+                }
+
+                lv_obj_clean(screen_obj);
+                lv_obj_set_style_bg_color(screen_obj, lv_color_black(), 0);
+                lv_obj_invalidate(screen_obj);
+                create_log_page_widgets();
+                current_screen = SCREEN_LOG;
+
+                transition_in_progress = false;
+                LOG_INF(">>> Transitioning: -> LOG");
+            }
+        } else if (!show && current_screen == SCREEN_LOG) {
+            transition_in_progress = true;
+
+            destroy_log_page_widgets();
+            lv_obj_clean(screen_obj);
+            lv_obj_set_style_bg_color(screen_obj, lv_color_black(), 0);
+            lv_obj_invalidate(screen_obj);
+
+            if (log_page_prev_screen == SCREEN_PROSPECTOR_DISPLAY) {
+                create_prospector_display_widgets();
+                current_screen = SCREEN_PROSPECTOR_DISPLAY; /* 该函数自己不设 current_screen */
+            } else {
+                /* create_main_screen_widgets() 内部会设 current_screen
+                 * （非 YADS 布局时它会直接落到 Prospector Display） */
+                create_main_screen_widgets();
+            }
+
+            transition_in_progress = false;
+            LOG_INF(">>> Transitioning: LOG -> screen=%d", current_screen);
+        }
+    }
+
+    /* 2) 日志页可见时刷新文本 */
+    if (current_screen == SCREEN_LOG) {
+        log_page_refresh();
+    }
+}
+
+#endif /* CONFIG_PROSPECTOR_DISPLAY_LOG_PAGE */
+
+/* ========== 日志页开关（对外接口，见 custom_status_screen.h）========== */
+
+void display_log_page_show(bool show) {
+#if IS_ENABLED(CONFIG_PROSPECTOR_DISPLAY_LOG_PAGE)
+    /* 只置标志：LVGL 不允许跨线程调用，真正的切页由 log_page_timer_cb()
+     * 在显示线程里做。任意上下文（含中断）都可调用。 */
+    pending_log_page = show ? 1 : 0;
+#else
+    ARG_UNUSED(show);
+    LOG_DBG("Log page not built in (CONFIG_PROSPECTOR_DISPLAY_LOG_PAGE=n)");
+#endif
+}
+
+bool display_log_page_is_visible(void) {
+    return current_screen == SCREEN_LOG;
 }
 
 /* ========== Swipe Event Handler (runs in ISR context - just set flag!) ========== */
