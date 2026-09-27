@@ -20,6 +20,14 @@ if(CONFIG_SHIELD_PROSPECTOR_e73 OR CONFIG_SHIELD_PROSPECTOR_SCANNER)
 
     # CUSTOM screen support (from display_test)
     target_sources_ifdef(CONFIG_ZMK_DISPLAY_STATUS_SCREEN_CUSTOM app PRIVATE ${PROSPECTOR_SHIELD_SRC}/custom_status_screen.c)
+
+    # 状态屏第 6 页（日志页）的实现：页面控件、文本缓冲/刷新、以及处理
+    # display_log_page_show() 请求的 LVGL 定时器，都从 custom_status_screen.c
+    # 拆到了这个文件（那个文件太大了）。它无条件编译 —— 关掉
+    # CONFIG_PROSPECTOR_DISPLAY_LOG_PAGE 时只剩 display_log_page_show() /
+    # display_log_page_is_visible() 的空实现，而这两个是 custom_status_screen.h
+    # 里的对外接口，任何配置下都得有定义，所以不能加 ifdef。
+    target_sources_ifdef(CONFIG_ZMK_DISPLAY_STATUS_SCREEN_CUSTOM app PRIVATE ${PROSPECTOR_SHIELD_SRC}/custom_status_screen_log.c)
     # target_sources_ifdef(CONFIG_ZMK_DISPLAY_STATUS_SCREEN_CUSTOM app PRIVATE ${PROSPECTOR_SHIELD_SRC}/hello_widget.c)
 
     # 状态屏数据源（替代原模块 scanner_core.c，接口名为 ble_*）

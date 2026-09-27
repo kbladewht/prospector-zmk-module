@@ -677,7 +677,8 @@ config PROSPECTOR_DISPLAY_LOG_PAGE
       正常固件里多出一"页日志"：屏仍归 LVGL（状态屏照常工作），日志采集复用
       qf_display_log.c —— 同样一个额外的日志后端（与 USB/UART 后端并存，
       屏上和串口是同一批日志）、同一套环形行缓冲，只是最终的显示交给
-      custom_status_screen.c 的日志页用 lv_label 画出来。
+      custom_status_screen_log.c 的日志页（拆自 custom_status_screen.c）
+      用 lv_label 画出来。
 
       和 PROSPECTOR_DISPLAY_LOG 的区别：
       - PROSPECTOR_DISPLAY_LOG 是专用日志固件（需 CONFIG_ZMK_DISPLAY=n）：

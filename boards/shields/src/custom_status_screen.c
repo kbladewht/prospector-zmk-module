@@ -35,8 +35,7 @@
 #include "prospector_layouts.h"  /* Carrefinho-inspired display layouts */
 #include "yads2_layout.h"        /* yads2_layout_refresh_rssi()（信号栏定时兜底） */
 #include "fault_recovery.h"      /* Crash recovery + display watchdog feed */
-#include "custom_status_screen.h" /* display_log_page_show()/is_visible() */
-#include "qf_display_log.h"       /* 日志页的数据来源（qf_display_log.c 的采集层） */
+#include "custom_status_screen_log.h" /* 日志页（第 6 页）：实现在 custom_status_screen_log.c */
 
 LOG_MODULE_REGISTER(display_screen, LOG_LEVEL_INF);
 
@@ -73,16 +72,11 @@ volatile bool prospector_display_active = false;
 static volatile enum swipe_direction pending_swipe = SWIPE_DIRECTION_NONE;
 static lv_timer_t *swipe_process_timer = NULL;
 
-#if IS_ENABLED(CONFIG_PROSPECTOR_DISPLAY_LOG_PAGE)
-/* Log page request - set by display_log_page_show() from any context
- * (including ISR), processed by log_page_timer_cb() in the LVGL thread.
- * -1 = no request, 0 = hide, 1 = show. Same design as pending_swipe above. */
-static volatile int pending_log_page = -1;
-/* Which normal screen to return to when leaving the log page */
-static enum screen_state log_page_prev_screen = SCREEN_MAIN;
-static lv_timer_t *log_page_timer = NULL;
-static void log_page_timer_cb(lv_timer_t *timer);
-#endif
+/* 日志页（第 6 页）的请求标志、定时器、控件都不在这里：整页实现搬到了
+ * custom_status_screen_log.c（本文件太大了），本文件只保留
+ * custom_status_screen_log.h 里那组 log_host_* 钩子，见下面"日志页的宿主钩子"。
+ * 另外这个文件不再直接用 display_log_page_show()/is_visible()，也就不需要
+ * include custom_status_screen.h 和 qf_display_log.h。 */
 
 /* Auto brightness timer - reads sensor and adjusts brightness when auto mode enabled */
 /* Auto brightness is toggled from the touch-only "Display Settings" screen, so
@@ -945,19 +939,11 @@ lv_obj_t *zmk_display_status_screen(void) {
         LOG_INF("Pending update timer registered (100ms interval)");
     }
 
-#if IS_ENABLED(CONFIG_PROSPECTOR_DISPLAY_LOG_PAGE)
-    /* Log page: handles display_log_page_show() requests and repaints the text
-     * when new log lines arrive. Same design as the timers above - a request
-     * flag is set from any context, this LVGL timer does the actual LVGL work. */
-    /* 25ms：日志页只在"有新行"时才会碰 LVGL（dirty 标志门控），周期本身几乎
-     * 不花 CPU，但把"新行 -> 上屏"的延迟从 100ms 压到 25ms。
-     * 注意这个 timer 由 LVGL 的 timer handler 驱动，而 handler 的调用节奏又受
-     * CONFIG_LV_DEF_REFR_PERIOD 影响（见 prospector_e73.conf），两者要一起压。 */
-    if (!log_page_timer) {
-        log_page_timer = lv_timer_create(log_page_timer_cb, 25, NULL);
-        LOG_INF("Log page timer registered (25ms interval)");
-    }
-#endif
+    /* Log page (screen 6): its LVGL timer lives in custom_status_screen_log.c
+     * together with the rest of that page - a request flag is set from any
+     * context, that timer does the actual LVGL work (same design as the timers
+     * above). No-op when the page is not built in. */
+    custom_status_screen_log_init();
 
     return screen;
 }
@@ -3551,167 +3537,91 @@ static void swipe_process_timer_cb(lv_timer_t *timer) {
     transition_in_progress = false;
 }
 
-/* ========== 日志页（第 6 页）==========
+/* ========== 日志页（第 6 页）的宿主钩子 ==========
  *
- * 内容来自 qf_display_log.c 的采集层（和 USB 串口/日志固件是同一批日志），
- * 这里只负责用 LVGL 画出来。
+ * 日志页的实现整块搬到了 custom_status_screen_log.c（本文件太大了）：页面控件、
+ * 文本缓冲、刷新、以及处理切页请求的定时器都在那边。
  *
- * 字体用 qf_font_log_10x16（见 qf_display_log_lvfont.c）：它就是把日志固件那份
- * 自带的 10x16 DroidSansMono 点阵转成 LVGL 静态字体得到的，等宽，每字符
- * 10px 宽、16px 行高，于是
- *   CONFIG_PROSPECTOR_DISPLAY_LOG_MAX_COLS（28）x 10px = 280px  铺满屏宽
- *   CONFIG_PROSPECTOR_DISPLAY_LOG_LINES   （15）x 16px = 240px  铺满屏高
- * 正好占满 280x240 的面板。正文从 (0,0) 起、上面不放标题条：标题会额外占掉
- * 一行，等于白白少一行日志，日志页也就不需要它。
+ * 但"屏"和页号归本文件，切页必然要碰 current_screen / transition_in_progress /
+ * 各页控件的销毁重建，所以由本文件实现下面这几个钩子给日志页调用，
+ * 契约见 custom_status_screen_log.h。
  *
- * 为什么不用 LVGL 自带的两个等宽字体：lv_font_unscii_8 只有 8x9，在本机上太小
- * 看不清；lv_font_unscii_16 是 16px 全宽，一行只放得下 17 个字符，日志会被截掉
- * 大半。10x16 既高一倍，又比 unscii_16 窄 37%，一屏仍有 28 x 15 = 420 个字符。
- * 屏归 LVGL，所以这里绝不用 display_write()（那是日志固件的事）。
- *
- * 默认不显示：不进日志页时屏上行为和以前完全一样。
- * 切换由 display_log_page_show() 请求，见 custom_status_screen.h。
+ * 没编进日志页时这一整段不参与编译。
  */
 #if IS_ENABLED(CONFIG_PROSPECTOR_DISPLAY_LOG_PAGE)
 
-/* 快照缓冲：LINES 行 x (MAX_COLS + 1) 字符 + 行间 '\n' + 结尾 '\0' */
-static char log_text[QF_DISPLAY_LOG_TEXT_MAX];
-static lv_obj_t *log_label = NULL;
+/* 从日志页返回时回到哪一页（= 进日志页之前那一页） */
+static enum screen_state log_page_prev_screen = SCREEN_MAIN;
 
-/* 正文用等宽字体，否则日志列对不齐。字体定义在 qf_display_log_lvfont.c，
- * 由 CMakeLists.txt 在 CONFIG_PROSPECTOR_DISPLAY_LOG_PAGE 下编进固件。 */
-LV_FONT_DECLARE(qf_font_log_10x16);
-
-static void create_log_page_widgets(void) {
+/* 切页前清屏：控件由各自的 destroy_*_widgets() 收尾，这里只管屏自己 */
+static void clear_screen_obj(void) {
     if (!screen_obj) {
         return;
     }
 
-    /* 正文：一行一条日志，行距 0、定宽 280 + CLIP，和字符网格严格对齐。
-     * 从 (0,0) 开始画：15 行 x 16px = 240px 正好铺满屏高，所以上面不再放
-     * "LOG" 标题条 —— 那会占掉一行（16px），等于白白少一行日志。 */
-    log_label = lv_label_create(screen_obj);
-    lv_obj_set_style_text_font(log_label, &qf_font_log_10x16, 0);
-    lv_obj_set_style_text_color(log_label, lv_color_hex(0x00FF00), 0);
-    lv_obj_set_style_text_line_space(log_label, 0, 0);
-    lv_obj_set_style_text_align(log_label, LV_TEXT_ALIGN_LEFT, 0);
-    lv_obj_set_width(log_label, 280);
-    lv_label_set_long_mode(log_label, LV_LABEL_LONG_CLIP);
-    lv_obj_set_pos(log_label, 0, 0);
-
-    /* 立刻画一次现有内容：先丢掉切页之前攒下的脏标志，再强制取一次快照 */
-    qf_display_log_take_dirty();
-
-    int lines = qf_display_log_snapshot(log_text, sizeof(log_text));
-
-    /* 用 _static（后面刷新也用同一个版本）：文本不复制、不占堆。
-     * 一旦用过 _static（label->static_txt=1），就绝不能再对这个 label 用动态版
-     * lv_label_set_text()/lv_label_set_text_fmt() —— 那会 lv_free(log_text)。 */
-    lv_label_set_text_static(log_label, log_text);
-
-    LOG_INF("Log page widgets created (%d lines buffered)", lines);
+    lv_obj_clean(screen_obj);
+    lv_obj_set_style_bg_color(screen_obj, lv_color_black(), 0);
+    lv_obj_invalidate(screen_obj);
 }
 
-static void destroy_log_page_widgets(void) {
-    /* 控件随 lv_obj_clean(screen_obj) 一起销毁，这里只清指针 */
-    log_label = NULL;
+bool custom_status_screen_log_host_visible(void) {
+    return current_screen == SCREEN_LOG;
 }
 
-/* 有新日志才碰 LVGL（qf_display_log_take_dirty() 读走即清） */
-static void log_page_refresh(void) {
-    if (!log_label || !qf_display_log_take_dirty()) {
-        return;
+bool custom_status_screen_log_host_can_enter(void) {
+    /* 只有主屏 / Prospector Display 能进日志页 */
+    return current_screen == SCREEN_MAIN || current_screen == SCREEN_PROSPECTOR_DISPLAY;
+}
+
+bool custom_status_screen_log_host_enter(void) {
+    if (!custom_status_screen_log_host_can_enter() || transition_in_progress) {
+        return false;
     }
 
-    qf_display_log_snapshot(log_text, sizeof(log_text));
-    /* _static：文本就是 log_text 本身，零拷贝、零 malloc。日志页每来一行都要
-     * 整块重排（420 字符），这里省掉的是每次约 420 字节的 malloc/free 和堆碎片，
-     * 避免和 LVGL 其它控件抢那块固定内存池（CONFIG_LV_Z_MEM_POOL_SIZE）。
-     * lv_label_set_text_static() 内部照样会调 lv_label_refr_text()，
-     * 所以 log_text 内容变了能正常重排刷新。 */
-    lv_label_set_text_static(log_label, log_text);
-}
+    transition_in_progress = true;
+    log_page_prev_screen = current_screen;
 
-static void log_page_timer_cb(lv_timer_t *timer) {
-    ARG_UNUSED(timer);
-
-    /* 1) 处理切换请求（display_log_page_show() 只置标志） */
-    if (pending_log_page >= 0) {
-        bool show = (pending_log_page == 1);
-
-        pending_log_page = -1;
-
-        if (show && current_screen != SCREEN_LOG) {
-            if (current_screen != SCREEN_MAIN && current_screen != SCREEN_PROSPECTOR_DISPLAY) {
-                /* 触摸专用的设置页不在这里抢：那几页有自己的返回路径 */
-                LOG_WRN("Log page request ignored while on screen=%d", current_screen);
-            } else if (transition_in_progress) {
-                LOG_WRN("Log page request ignored - transition already in progress");
-            } else {
-                log_page_prev_screen = current_screen;
-                transition_in_progress = true;
-
-                if (current_screen == SCREEN_PROSPECTOR_DISPLAY) {
-                    destroy_prospector_display_widgets();
-                } else {
-                    destroy_main_screen_widgets();
-                }
-
-                lv_obj_clean(screen_obj);
-                lv_obj_set_style_bg_color(screen_obj, lv_color_black(), 0);
-                lv_obj_invalidate(screen_obj);
-                create_log_page_widgets();
-                current_screen = SCREEN_LOG;
-
-                transition_in_progress = false;
-                LOG_INF(">>> Transitioning: -> LOG");
-            }
-        } else if (!show && current_screen == SCREEN_LOG) {
-            transition_in_progress = true;
-
-            destroy_log_page_widgets();
-            lv_obj_clean(screen_obj);
-            lv_obj_set_style_bg_color(screen_obj, lv_color_black(), 0);
-            lv_obj_invalidate(screen_obj);
-
-            if (log_page_prev_screen == SCREEN_PROSPECTOR_DISPLAY) {
-                create_prospector_display_widgets();
-                current_screen = SCREEN_PROSPECTOR_DISPLAY; /* 该函数自己不设 current_screen */
-            } else {
-                /* create_main_screen_widgets() 内部会设 current_screen
-                 * （非 YADS 布局时它会直接落到 Prospector Display） */
-                create_main_screen_widgets();
-            }
-
-            transition_in_progress = false;
-            LOG_INF(">>> Transitioning: LOG -> screen=%d", current_screen);
-        }
+    if (current_screen == SCREEN_PROSPECTOR_DISPLAY) {
+        destroy_prospector_display_widgets();
+    } else {
+        destroy_main_screen_widgets();
     }
 
-    /* 2) 日志页可见时刷新文本 */
-    if (current_screen == SCREEN_LOG) {
-        log_page_refresh();
-    }
+    clear_screen_obj();
+    custom_status_screen_log_create(screen_obj);
+    current_screen = SCREEN_LOG;
+    transition_in_progress = false;
+
+    return true;
 }
+
+void custom_status_screen_log_host_leave(void) {
+    transition_in_progress = true;
+
+    custom_status_screen_log_destroy();
+    clear_screen_obj();
+
+    if (log_page_prev_screen == SCREEN_PROSPECTOR_DISPLAY) {
+        create_prospector_display_widgets();
+        current_screen = SCREEN_PROSPECTOR_DISPLAY; /* 该函数自己不设 current_screen */
+    } else {
+        /* create_main_screen_widgets() 内部会设 current_screen
+         * （非 YADS 布局时它会直接落到 Prospector Display） */
+        create_main_screen_widgets();
+    }
+
+    transition_in_progress = false;
+}
+
+/* 刷新与定时器回调（log_page_refresh / log_page_timer_cb）也跟着日志页搬到
+ * custom_status_screen_log.c 了 —— 它们只碰这一页的控件和请求标志。 */
 
 #endif /* CONFIG_PROSPECTOR_DISPLAY_LOG_PAGE */
 
-/* ========== 日志页开关（对外接口，见 custom_status_screen.h）========== */
-
-void display_log_page_show(bool show) {
-#if IS_ENABLED(CONFIG_PROSPECTOR_DISPLAY_LOG_PAGE)
-    /* 只置标志：LVGL 不允许跨线程调用，真正的切页由 log_page_timer_cb()
-     * 在显示线程里做。任意上下文（含中断）都可调用。 */
-    pending_log_page = show ? 1 : 0;
-#else
-    ARG_UNUSED(show);
-    LOG_DBG("Log page not built in (CONFIG_PROSPECTOR_DISPLAY_LOG_PAGE=n)");
-#endif
-}
-
-bool display_log_page_is_visible(void) {
-    return current_screen == SCREEN_LOG;
-}
+/* display_log_page_show() / display_log_page_is_visible() 这两个对外接口
+ * （原型见 custom_status_screen.h）也跟着日志页一起搬到了
+ * custom_status_screen_log.c。那边是无条件编译的，所以关掉日志页时它们照样
+ * 有定义，只是退化成空操作 / 恒 false，调用方不用改代码。 */
 
 /* ========== Swipe Event Handler (runs in ISR context - just set flag!) ========== */
 
