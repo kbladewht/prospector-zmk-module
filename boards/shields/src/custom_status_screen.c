@@ -75,15 +75,22 @@ static volatile enum swipe_direction pending_swipe = SWIPE_DIRECTION_NONE;
 static lv_timer_t *swipe_process_timer = NULL;
 
 /* Auto brightness timer - reads sensor and adjusts brightness when auto mode enabled */
+/* Auto brightness is toggled from the touch-only "Display Settings" screen, so
+ * the timer (and its callback) only exist when touch input is enabled. */
+#if IS_ENABLED(CONFIG_PROSPECTOR_TOUCH_ENABLED)
 static lv_timer_t *auto_brightness_timer = NULL;
+#endif /* CONFIG_PROSPECTOR_TOUCH_ENABLED */
 #define AUTO_BRIGHTNESS_INTERVAL_MS 1000  /* Check sensor every 1 second */
+#if IS_ENABLED(CONFIG_PROSPECTOR_TOUCH_ENABLED)
 static void auto_brightness_timer_cb(lv_timer_t *timer);
+#endif /* CONFIG_PROSPECTOR_TOUCH_ENABLED */
 static bool ds_auto_brightness_enabled = false;
 
 /* Create the 1s sensor-poll timer (display thread only). Shared by the
  * settings switch and boot-time restore of a persisted "auto" setting -
  * previously only the switch created it, so auto brightness silently did
  * nothing after every reboot until the user toggled the switch. */
+#if IS_ENABLED(CONFIG_PROSPECTOR_TOUCH_ENABLED)
 static void start_auto_brightness_timer(void) {
     if (!ds_auto_brightness_enabled || !brightness_control_sensor_available()) {
         return;
@@ -95,6 +102,13 @@ static void start_auto_brightness_timer(void) {
     /* Trigger immediate sensor read */
     auto_brightness_timer_cb(NULL);
 }
+#else /* !CONFIG_PROSPECTOR_TOUCH_ENABLED */
+/* No touch => the Display Settings switch that enables auto brightness is not
+ * built, so there is nothing to poll for. Called from load_display_settings()
+ * when NVS still holds auto=on (e.g. after flashing this build over a touch
+ * build); brightness is then left at CONFIG_PROSPECTOR_FIXED_BRIGHTNESS. */
+static void start_auto_brightness_timer(void) {}
+#endif /* CONFIG_PROSPECTOR_TOUCH_ENABLED */
 
 /* Forward declarations */
 static void destroy_main_screen_widgets(void);
@@ -120,6 +134,8 @@ void display_update_keyboard_battery_4(int bat0, int bat1, int bat2, int bat3);
 /* Custom slider state for inverted drag handling */
 /* Due to 180° touch panel rotation, LVGL X decreases when user drags right */
 /* We track touch position manually and invert the calculation */
+/* Only used by the touch-only "Display Settings" sliders. */
+#if IS_ENABLED(CONFIG_PROSPECTOR_TOUCH_ENABLED)
 static struct {
     lv_obj_t *active_slider;
     int32_t start_x;       /* Touch X at drag start */
@@ -131,6 +147,7 @@ static struct {
     int32_t slider_width;  /* Slider track width in pixels */
     bool drag_cancelled;   /* True if vertical swipe detected - let swipe through */
 } slider_drag_state = {0};
+#endif /* CONFIG_PROSPECTOR_TOUCH_ENABLED */
 
 /* Threshold for detecting vertical swipe vs horizontal drag */
 #define SLIDER_SWIPE_THRESHOLD 30
@@ -268,6 +285,10 @@ static lv_obj_t *rssi_label = NULL;
 static lv_obj_t *rate_label = NULL;
 
 /* ========== Display Settings Screen Widgets (NO CONTAINER) ========== */
+/* Widget pointers for the touch-only "Display Settings" screen. They live in the
+ * big CONFIG_PROSPECTOR_TOUCH_ENABLED block further down; the widget set itself
+ * (slider/switch) is not compiled into LVGL when touch is off. */
+#if IS_ENABLED(CONFIG_PROSPECTOR_TOUCH_ENABLED)
 static lv_obj_t *ds_title_label = NULL;
 static lv_obj_t *ds_brightness_label = NULL;
 static lv_obj_t *ds_auto_label = NULL;
@@ -280,6 +301,7 @@ static lv_obj_t *ds_layer_value = NULL;
 static lv_obj_t *ds_slide_label = NULL;
 static lv_obj_t *ds_slide_switch = NULL;
 static lv_obj_t *ds_nav_hint = NULL;
+#endif /* CONFIG_PROSPECTOR_TOUCH_ENABLED */
 
 /* Display Settings State (persists across screen transitions, backed by NVS) */
 /* ds_auto_brightness_enabled is declared near AUTO_BRIGHTNESS_INTERVAL_MS */
@@ -328,6 +350,9 @@ static bool ui_interaction_active = false;
 // static bool lvgl_indev_registered = false;
 
 /* ========== System Settings Screen Widgets (NO CONTAINER) ========== */
+/* Widget pointers for the touch-only "Quick Actions" and "Keyboard Select"
+ * screens - see the CONFIG_PROSPECTOR_TOUCH_ENABLED blocks further down. */
+#if IS_ENABLED(CONFIG_PROSPECTOR_TOUCH_ENABLED)
 static lv_obj_t *ss_title_label = NULL;
 static lv_obj_t *ss_version_label = NULL;
 static lv_obj_t *ss_kb_version_label = NULL;
@@ -361,13 +386,16 @@ static lv_obj_t *ks_channel_value = NULL;
 /* Channel popup UI */
 static lv_obj_t *ks_channel_popup = NULL;
 static lv_obj_t *ks_channel_popup_btns[11] = {NULL};  /* 0-9 + All(10) */
+#endif /* CONFIG_PROSPECTOR_TOUCH_ENABLED */
 
 /* Runtime channel (defined in system_settings_widget.c, fallback here) */
 /* Default to CHANNEL_ALL (10) = show all keyboards */
 static uint8_t ks_runtime_channel = 10;  /* CHANNEL_ALL */
 static bool ks_channel_initialized = false;
 
-/* Channel color palette (pastel colors for good visibility) */
+/* Channel color palette (pastel colors for good visibility) - only used by the
+ * touch-only Keyboard Select screen */
+#if IS_ENABLED(CONFIG_PROSPECTOR_TOUCH_ENABLED)
 static lv_color_t get_channel_color(uint8_t channel) {
     switch (channel) {
         case 1: return lv_color_hex(0xFF6B6B);  /* Red */
@@ -382,6 +410,7 @@ static lv_color_t get_channel_color(uint8_t channel) {
         default: return lv_color_hex(0x808080); /* Default gray for Ch0/All */
     }
 }
+#endif /* CONFIG_PROSPECTOR_TOUCH_ENABLED */
 
 /* Channel functions - try to use system_settings_widget.c version if available */
 __attribute__((weak)) uint8_t scanner_get_runtime_channel(void) {
@@ -2002,6 +2031,7 @@ static void create_main_screen_widgets(void) {
  * - LV_EVENT_PRESSING: Update slider value or detect vertical swipe
  * - LV_EVENT_RELEASED: Clear state, restore value if cancelled
  */
+#if IS_ENABLED(CONFIG_PROSPECTOR_TOUCH_ENABLED)
 static void ds_custom_slider_drag_cb(lv_event_t *e) {
     lv_event_code_t code = lv_event_get_code(e);
     lv_obj_t *slider = lv_event_get_target(e);
@@ -2623,10 +2653,25 @@ static void create_system_settings_widgets(void) {
 
     LOG_INF("System settings widgets created");
 }
+#else /* !CONFIG_PROSPECTOR_TOUCH_ENABLED */
+/* Touch input disabled. The "Display Settings" (ds_*) and "Quick Actions" (ss_*)
+ * screens are dropped from the build: swipes are the only way to navigate to
+ * them, and they are the sole users of the LVGL slider and switch widgets, which
+ * stay disabled in prospector_e73.conf to save flash. The no-op stubs below keep
+ * the navigation code in swipe_process_timer_cb linking - that code can never
+ * run without touch input anyway. */
+static void create_display_settings_widgets(void) {}
+static void destroy_display_settings_widgets(void) {}
+static void create_system_settings_widgets(void) {}
+static void destroy_system_settings_widgets(void) {}
+#endif /* CONFIG_PROSPECTOR_TOUCH_ENABLED */
 
 /* ========== Keyboard Select Screen Functions ========== */
 
 /* 选中的键盘槽位（本机数据源，声明见 s7789_update.h） */
+
+/* Keyboard Select screen: touch only (channel badge + popup use lv_btn_create) */
+#if IS_ENABLED(CONFIG_PROSPECTOR_TOUCH_ENABLED)
 
 /* RSSI helper functions (same as original keyboard_list_widget.c) */
 static uint8_t ks_rssi_to_bars(int8_t rssi) {
@@ -3224,6 +3269,17 @@ static void create_keyboard_select_widgets(void) {
 
     LOG_INF("Keyboard select widgets created (%d keyboards)", ks_entry_count);
 }
+#else /* !CONFIG_PROSPECTOR_TOUCH_ENABLED */
+/* Touch input disabled: the "Keyboard Select" screen is not built. It is
+ * unreachable without swipes and its channel badge/popup use lv_btn_create(),
+ * which stays disabled in prospector_e73.conf to save flash. The stubs keep the
+ * (equally unreachable) swipe navigation code linking. */
+static void create_keyboard_select_widgets(void) {}
+static void destroy_keyboard_select_widgets(void) {}
+static void ks_close_channel_popup(void) {}
+static void ks_channel_increment(void) {}
+static void ks_channel_decrement(void) {}
+#endif /* CONFIG_PROSPECTOR_TOUCH_ENABLED */
 
 /* ========== Prospector Display (Carrefinho-inspired layouts) ========== */
 

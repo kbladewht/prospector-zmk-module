@@ -37,6 +37,16 @@ void scanner_set_runtime_channel(uint8_t channel) {
             channel, channel == 0 ? "All" : "Filtered");
 }
 
+/* ---------------------------------------------------------------------------
+ * Below: the LVGL settings panel (buttons/labels) for the touch-only
+ * "Quick Actions" screen. With CONFIG_PROSPECTOR_TOUCH_ENABLED=n nothing calls
+ * zmk_widget_system_settings_create() and the button widget is not compiled into
+ * LVGL (see prospector_e73.conf), so the whole panel is dropped at compile time.
+ * The channel get/set functions above are kept: custom_status_screen.c links
+ * against them as strong symbols (its own copies are __attribute__((weak))).
+ * ------------------------------------------------------------------------- */
+#if IS_ENABLED(CONFIG_PROSPECTOR_TOUCH_ENABLED)
+
 // Forward declaration for channel value update
 static void update_channel_value_display(struct zmk_widget_system_settings *widget);
 
@@ -439,3 +449,5 @@ void zmk_widget_system_settings_hide(struct zmk_widget_system_settings *widget) 
 
     LOG_INF("✅ System settings screen hidden");
 }
+
+#endif /* CONFIG_PROSPECTOR_TOUCH_ENABLED */
