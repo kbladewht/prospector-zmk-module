@@ -213,9 +213,8 @@ static volatile bool s_ready;
 /* 一行字符展开后的像素缓冲（RGB565，pitch == width == s_row_px） */
 static uint16_t s_px[QF_LOG_COLS * QF_LOG_FONT_W * QF_LOG_FONT_H];
 
-/* 刷屏前在临界区里做的行快照，避免读到半更新的行 */
+/* 刷屏前在临界区里做的行快照，避免读到半更新的行（只用第 0 行） */
 static char s_snap[QF_LOG_LINES][QF_LOG_COLS + 1];
-static uint8_t s_snap_level[QF_LOG_LINES];
 
 static uint16_t qf_color_for_level(uint8_t level) {
 #if IS_ENABLED(CONFIG_PROSPECTOR_DISPLAY_LOG_COLORS)
@@ -278,6 +277,7 @@ static void qf_render_line(const char *text, uint16_t fg) {
 static uint16_t s_wrap_row;  /* 下一个要写的屏幕行 */
 static uint16_t s_wrap_slot; /* 最后一个已经写出去的行槽位 */
 static bool s_wrap_started;
+static uint8_t s_snap_level[QF_LOG_LINES]; /* 快照行对应的等级（只有本模式用） */
 #else
 /* 滚动显示：记下屏上已经画好的内容，没变的行就不用再占 SPI */
 static char s_shown[QF_LOG_LINES][QF_LOG_COLS + 1];
