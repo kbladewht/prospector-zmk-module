@@ -92,6 +92,11 @@ if(CONFIG_SHIELD_PROSPECTOR_e73 OR CONFIG_SHIELD_PROSPECTOR_SCANNER)
     endif()
     target_sources_ifdef(CONFIG_PROSPECTOR_DISPLAY_LOG app PRIVATE ${PROSPECTOR_SHIELD_SRC}/qf_display_log_font.c)
 
+    # 日志页的等宽字体 qf_font_log_10x16：由上面那份 10x16 点阵（qf_display_log_font.c，
+    # 只在日志固件模式下编译）离线转成的 LVGL 静态字体，所以日志页不能复用那个 .c，
+    # 必须单独编这个文件。10px 宽 / 16px 高 -> 一行 28 字符、一屏 15 行。
+    target_sources_ifdef(CONFIG_PROSPECTOR_DISPLAY_LOG_PAGE app PRIVATE ${PROSPECTOR_SHIELD_SRC}/qf_display_log_lvfont.c)
+
     # Include path for the shared sources (headers live next to the .c files)
     target_include_directories(app PRIVATE ${PROSPECTOR_SHIELD_SRC})
 endif()

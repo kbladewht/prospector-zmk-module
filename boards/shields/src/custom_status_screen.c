@@ -3550,12 +3550,19 @@ static void swipe_process_timer_cb(lv_timer_t *timer) {
 /* ========== 日志页（第 6 页）==========
  *
  * 内容来自 qf_display_log.c 的采集层（和 USB 串口/日志固件是同一批日志），
- * 这里只负责用 LVGL 画出来。字体用等宽 lv_font_unscii_8，真实度量是每字符
- * 8px 宽、9px 行高（LVGL 内部 adv_w = 128/16、line_height = 9），于是
- *   CONFIG_PROSPECTOR_DISPLAY_LOG_MAX_COLS（35）x 8px = 280px  铺满屏宽
- *   CONFIG_PROSPECTOR_DISPLAY_LOG_LINES   （26）x 9px = 234px  铺满屏高
+ * 这里只负责用 LVGL 画出来。
+ *
+ * 字体用 qf_font_log_10x16（见 qf_display_log_lvfont.c）：它就是把日志固件那份
+ * 自带的 10x16 DroidSansMono 点阵转成 LVGL 静态字体得到的，等宽，每字符
+ * 10px 宽、16px 行高，于是
+ *   CONFIG_PROSPECTOR_DISPLAY_LOG_MAX_COLS（28）x 10px = 280px  铺满屏宽
+ *   CONFIG_PROSPECTOR_DISPLAY_LOG_LINES   （15）x 16px = 240px  铺满屏高
  * 正好占满 280x240 的面板。正文从 (0,0) 起、上面不放标题条：标题会额外占掉
- * 20px，等于白白少两行日志，日志页也就不需要它。
+ * 一行，等于白白少一行日志，日志页也就不需要它。
+ *
+ * 为什么不用 LVGL 自带的两个等宽字体：lv_font_unscii_8 只有 8x9，在本机上太小
+ * 看不清；lv_font_unscii_16 是 16px 全宽，一行只放得下 17 个字符，日志会被截掉
+ * 大半。10x16 既高一倍，又比 unscii_16 窄 37%，一屏仍有 28 x 15 = 420 个字符。
  * 屏归 LVGL，所以这里绝不用 display_write()（那是日志固件的事）。
  *
  * 默认不显示：不进日志页时屏上行为和以前完全一样。
@@ -3567,10 +3574,9 @@ static void swipe_process_timer_cb(lv_timer_t *timer) {
 static char log_text[QF_DISPLAY_LOG_TEXT_MAX];
 static lv_obj_t *log_label = NULL;
 
-/* 正文用等宽字体，否则日志列对不齐。
- * LV_FONT_DECLARE 让这里不依赖 lv_conf 是否已声明；字体本身由 Kconfig 的
- * "select LV_FONT_UNSCII_8" 保证会被编进固件。 */
-LV_FONT_DECLARE(lv_font_unscii_8);
+/* 正文用等宽字体，否则日志列对不齐。字体定义在 qf_display_log_lvfont.c，
+ * 由 CMakeLists.txt 在 CONFIG_PROSPECTOR_DISPLAY_LOG_PAGE 下编进固件。 */
+LV_FONT_DECLARE(qf_font_log_10x16);
 
 static void create_log_page_widgets(void) {
     if (!screen_obj) {
@@ -3578,10 +3584,10 @@ static void create_log_page_widgets(void) {
     }
 
     /* 正文：一行一条日志，行距 0、定宽 280 + CLIP，和字符网格严格对齐。
-     * 从 (0,0) 开始画：26 行 x 9px = 234px 正好铺满屏高，所以上面不再放
-     * "LOG" 标题条 —— 那会占掉 20px，等于白白少两行日志。 */
+     * 从 (0,0) 开始画：15 行 x 16px = 240px 正好铺满屏高，所以上面不再放
+     * "LOG" 标题条 —— 那会占掉一行（16px），等于白白少一行日志。 */
     log_label = lv_label_create(screen_obj);
-    lv_obj_set_style_text_font(log_label, &lv_font_unscii_8, 0);
+    lv_obj_set_style_text_font(log_label, &qf_font_log_10x16, 0);
     lv_obj_set_style_text_color(log_label, lv_color_hex(0x00FF00), 0);
     lv_obj_set_style_text_line_space(log_label, 0, 0);
     lv_obj_set_style_text_align(log_label, LV_TEXT_ALIGN_LEFT, 0);
