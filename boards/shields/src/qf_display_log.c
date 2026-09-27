@@ -69,10 +69,8 @@
 
 LOG_MODULE_REGISTER(qf_display_log, LOG_LEVEL_INF);
 
-/* 屏只有一个主人：日志固件（本文件直接 display_write）与 ZMK 状态屏不能同时开。
- * 正常固件里的"日志页"（CONFIG_PROSPECTOR_DISPLAY_LOG_PAGE=y）不受此限：
- * 那时屏归 LVGL，本文件只做日志采集，完全不碰 display API。 */
-#if IS_ENABLED(CONFIG_PROSPECTOR_DISPLAY_LOG) && IS_ENABLED(CONFIG_ZMK_DISPLAY)
+/* 屏只有一个主人：日志屏与 ZMK 状态屏不能同时存在 */
+#if IS_ENABLED(CONFIG_ZMK_DISPLAY)
 #error "PROSPECTOR_DISPLAY_LOG 与 ZMK_DISPLAY 冲突：日志固件请加 -DCONFIG_ZMK_DISPLAY=n -DCONFIG_LVGL=n"
 #endif
 
@@ -102,17 +100,11 @@ static uint8_t s_cur_level = LOG_LEVEL_INF;
 static uint16_t s_head;   /* s_lines 中最新一行的槽位 */
 static uint16_t s_filled; /* 已写入行数（不足一屏时屏顶留空） */
 static volatile bool s_dirty; /* 有还没画到屏上的新内容，刷屏任务取走后清掉 */
-/* 刷屏任务：新行到达时由 qf_request_refresh() 提前唤醒，空闲时靠兜底周期。
- * 只有"日志固件"（ZMK_DISPLAY=n，屏归本文件）才有刷屏任务；正常固件里
- * 由日志页的 LVGL 定时器读 s_dirty，见 qf_request_refresh()。 */
-#if !IS_ENABLED(CONFIG_ZMK_DISPLAY)
+/* 刷屏任务：新行到达时由 qf_request_refresh() 提前唤醒，空闲时靠兜底周期 */
 static void qf_refresh_handler(struct k_work *work);
 static void qf_request_refresh(void);
 static K_WORK_DELAYABLE_DEFINE(qf_refresh_work, qf_refresh_handler);
 static volatile bool s_req; /* 已经安排过一次提前刷新，别重复推迟 */
-#else
-static void qf_request_refresh(void);
-#endif
 
 /* ========== 字符入口（任意上下文，含中断） ========== */
 
@@ -191,33 +183,18 @@ static void qf_log_char(char c) {
  * s_req 保证同一时间只安排一次：日志再密也是"最后一次新行之后 SETTLE_MS"
  * 或者"上一次刷屏之后 SETTLE_MS"里必刷一次，不会把刷新无限往后推。
  */
-#if IS_ENABLED(CONFIG_ZMK_DISPLAY)
-/* 正常固件：屏归 LVGL，这里只置脏标志（qf_commit_line() 也已经置过，
- * 这里显式再置一次是为了让"折行提交"等路径语义一致）。日志页的
- * lv_timer 会读走它并重排文本。 */
-static void qf_request_refresh(void) {
-    s_dirty = true;
-}
-#else
 static void qf_request_refresh(void) {
     if (!s_req) {
         s_req = true;
         k_work_reschedule(&qf_refresh_work, K_MSEC(CONFIG_PROSPECTOR_DISPLAY_LOG_SETTLE_MS));
     }
 }
-#endif
 
 #if IS_ENABLED(CONFIG_LOG_MODE_MINIMAL)
 static int qf_printk_char_out(int c);
 #endif
 
-/* ========== 渲染：文本行 -> RGB565 像素行 -> display_write ==========
- *
- * 这一整段只服务于"日志固件"（CONFIG_ZMK_DISPLAY=n，屏只归本文件）。
- * 正常固件（ZMK_DISPLAY=y）里屏归 LVGL，本文件只做上面那层日志采集，
- * 内容由 custom_status_screen.c 的日志页读走（见 qf_display_log.h），
- * 于是这里连那 9KB 的行像素缓冲都不会编进固件。 */
-#if !IS_ENABLED(CONFIG_ZMK_DISPLAY)
+/* ========== 渲染：文本行 -> RGB565 像素行 -> display_write ========== */
 
 /* 颜色用 RGB565；背景纯黑，前景按日志等级着色 */
 #define QF_LOG_COLOR_BG 0x0000
@@ -511,8 +488,6 @@ static int qf_display_log_init(void) {
 
 SYS_INIT(qf_display_log_init, APPLICATION, 90);
 
-#endif /* !CONFIG_ZMK_DISPLAY：以下是屏归本文件的"日志固件"专属代码 */
-
 /* ========== 日志采集 ========== */
 #if !IS_ENABLED(CONFIG_LOG_MODE_MINIMAL)
 
@@ -580,109 +555,6 @@ static const struct log_backend_api qf_backend_api = {
 
 /* 与 USB/UART 后端并存：屏上和串口上是同一批日志 */
 LOG_BACKEND_DEFINE(qf_display_log_backend, qf_backend_api, true);
-
-/* ========== 只读快照：给正常固件的日志页用（见 qf_display_log.h） ========== */
-/* 下面三个接口只读写内存，不碰 display API，两种模式都会编进来；
- * 日志固件模式下没人调用它们，会被链接器丢掉。 */
-
-/* 行缓冲的可见窗口：最旧一行的槽位 + 可用行数。
- * 口径和 qf_flush() 的滚动显示一致（环形缓冲，未满一屏时屏顶留空）。 */
-static void qf_visible_window(uint16_t *head_out, uint16_t *count_out) {
-    unsigned int key = irq_lock();
-    uint16_t head = s_head;
-    uint16_t filled = s_filled;
-
-    if (filled > 0) {
-        head = (head + QF_LOG_LINES - (filled - 1)) % QF_LOG_LINES;
-    }
-
-    irq_unlock(key);
-
-    *head_out = head;
-    *count_out = filled;
-}
-
-int qf_display_log_snapshot(char *dst, size_t dst_size) {
-    uint16_t head;
-    uint16_t count;
-    size_t pos = 0;
-    int lines = 0;
-
-    if (dst == NULL || dst_size < 2) {
-        return 0;
-    }
-
-    dst[0] = '\0';
-
-    qf_visible_window(&head, &count);
-
-    for (uint16_t i = 0; i < count; i++) {
-        uint16_t slot = (head + i) % QF_LOG_LINES;
-        size_t room;
-        unsigned int key;
-        uint8_t len;
-
-        if (pos >= dst_size - 1) {
-            break; /* 缓冲不够了：保留已经写进去的行 */
-        }
-
-        /* 本行能放多少字符：留出结尾 '\0'，不是最后一行再多留 1 个 '\n' */
-        room = dst_size - pos - 1;
-
-        if ((i + 1 < count) && room > 0) {
-            room--;
-        }
-
-        if (room > QF_LOG_COLS) {
-            room = QF_LOG_COLS;
-        }
-
-        key = irq_lock();
-        len = (uint8_t)strnlen(s_lines[slot], QF_LOG_COLS);
-
-        if (len > room) {
-            len = (uint8_t)room;
-        }
-
-        memcpy(&dst[pos], s_lines[slot], len);
-        irq_unlock(key);
-
-        pos += len;
-
-        if ((i + 1 < count) && (pos < dst_size - 1)) {
-            dst[pos++] = '\n';
-        }
-
-        lines++;
-    }
-
-    dst[pos] = '\0';
-
-    return lines;
-}
-
-bool qf_display_log_take_dirty(void) {
-    unsigned int key = irq_lock();
-    bool dirty = s_dirty;
-
-    s_dirty = false;
-    irq_unlock(key);
-
-    return dirty;
-}
-
-void qf_display_log_clear(void) {
-    unsigned int key = irq_lock();
-
-    s_head = 0;
-    s_filled = 0;
-    s_cur_len = 0;
-    s_cur[0] = '\0';
-    memset(s_lines, 0, sizeof(s_lines));
-    memset(s_line_level, 0, sizeof(s_line_level));
-    s_dirty = false;
-    irq_unlock(key);
-}
 
 #else /* CONFIG_LOG_MODE_MINIMAL */
 

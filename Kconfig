@@ -662,37 +662,11 @@ config PROSPECTOR_DISPLAY_LOG
 
       开启本选项时必须同时关掉 CONFIG_ZMK_DISPLAY：屏只能有一个主人。
 
-config PROSPECTOR_DISPLAY_LOG_PAGE
-    bool "正常固件里的日志页（LVGL 屏上翻日志）"
-    default y
-    depends on ZMK_DISPLAY && DISPLAY
-    # 日志页用等宽字体 lv_font_unscii_8 才对得齐（每字符 8px：(MAX_COLS=28)*8
-    # = 224px 正好放进 280px 宽的屏）。写死依赖，省得手工忘开字体导致链接失败。
-    select LV_FONT_UNSCII_8
-    help
-      正常固件里多出一"页日志"：屏仍归 LVGL（状态屏照常工作），日志采集复用
-      qf_display_log.c —— 同样一个额外的日志后端（与 USB/UART 后端并存，
-      屏上和串口是同一批日志）、同一套环形行缓冲，只是最终的显示交给
-      custom_status_screen.c 的日志页用 lv_label 画出来。
-
-      和 PROSPECTOR_DISPLAY_LOG 的区别：
-      - PROSPECTOR_DISPLAY_LOG 是专用日志固件（需 CONFIG_ZMK_DISPLAY=n）：
-        省掉整个 LVGL/状态屏，RAM 最省，但设备只能看日志。
-      - 本选项不新增固件，也不抢屏，代价只是常驻的行缓冲，加上每条日志
-        多做一次字符拷贝。
-
-      默认不显示日志页：开机仍然是正常的电量/状态主屏。要显示由应用调用：
-
-          #include "custom_status_screen.h"
-          display_log_page_show(true);   /* 任意上下文安全，含中断 */
-
-      按键/层/手势等触发入口由使用方决定，当前没有绑定。
-
 config PROSPECTOR_DISPLAY_LOG_MAX_COLS
     int "日志屏每行最多字符数"
     range 8 46
     default 28
-    depends on PROSPECTOR_DISPLAY_LOG || PROSPECTOR_DISPLAY_LOG_PAGE
+    depends on PROSPECTOR_DISPLAY_LOG
     help
       每个字符 10 像素宽，280 像素宽的屏正好 28 个字符。超宽的行自动折行
       （和串口终端一样）。该值也决定行像素缓冲的静态内存占用
@@ -702,7 +676,7 @@ config PROSPECTOR_DISPLAY_LOG_LINES
     int "环形行缓冲的行数"
     range 4 30
     default 15
-    depends on PROSPECTOR_DISPLAY_LOG || PROSPECTOR_DISPLAY_LOG_PAGE
+    depends on PROSPECTOR_DISPLAY_LOG
     help
       保留最近多少行日志。字高 16 像素，240 像素高的屏正好显示 15 行。
 
@@ -755,7 +729,7 @@ config PROSPECTOR_DISPLAY_LOG_WRAP
 config PROSPECTOR_DISPLAY_LOG_LEVEL_PREFIX
     bool "屏幕上显示 <inf> 这类日志等级前缀"
     default n
-    depends on PROSPECTOR_DISPLAY_LOG || PROSPECTOR_DISPLAY_LOG_PAGE
+    depends on PROSPECTOR_DISPLAY_LOG
     help
       默认关闭。280 像素宽只放得下 28 个字符，而 "<inf> " 前缀就要占 6 个，
       关掉能明显减少折行（日志等级仍然用颜色区分，见
@@ -764,7 +738,7 @@ config PROSPECTOR_DISPLAY_LOG_LEVEL_PREFIX
 config PROSPECTOR_DISPLAY_LOG_TIMESTAMP
     bool "屏幕上显示日志时间戳"
     default n
-    depends on PROSPECTOR_DISPLAY_LOG || PROSPECTOR_DISPLAY_LOG_PAGE
+    depends on PROSPECTOR_DISPLAY_LOG
     help
       时间戳形如 [00:00:12.345,678]，要占 21 个字符（接近一整行），所以
       默认关闭。
@@ -772,7 +746,7 @@ config PROSPECTOR_DISPLAY_LOG_TIMESTAMP
 config PROSPECTOR_DISPLAY_LOG_COLORS
     bool "按日志等级给文字着色"
     default y
-    depends on PROSPECTOR_DISPLAY_LOG || PROSPECTOR_DISPLAY_LOG_PAGE
+    depends on PROSPECTOR_DISPLAY_LOG
     help
       err 红色、wrn 黄色、inf 绿色、dbg 灰色、其它白色，背景全黑。
       关掉则所有文字都是白色（最省一点代码空间）。
