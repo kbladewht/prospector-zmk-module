@@ -166,8 +166,8 @@ static struct {
 LV_FONT_DECLARE(lv_font_montserrat_12);
 LV_FONT_DECLARE(lv_font_montserrat_16);
 LV_FONT_DECLARE(lv_font_montserrat_28);
-LV_FONT_DECLARE(lv_font_unscii_8);
-LV_FONT_DECLARE(lv_font_unscii_16);
+// LV_FONT_DECLARE(lv_font_unscii_8);
+// LV_FONT_DECLARE(lv_font_unscii_16);
 
 /* NerdFont modifier symbols - From YADS project (MIT License) */
 static const char *mod_symbols[4] = {
@@ -674,32 +674,32 @@ lv_obj_t *zmk_display_status_screen(void) {
     LOG_INF("[INIT] main_screen created");
 
     /* ===== 1. Device Name (TOP_MID, y=25) ===== */
-    LOG_INF("[INIT] Creating device name...");
-    device_name_label = lv_label_create(screen);
-    lv_obj_set_style_text_font(device_name_label, &lv_font_unscii_16, 0);
-    lv_obj_set_style_text_color(device_name_label, lv_color_white(), 0);
-    lv_label_set_text(device_name_label, "Scanning...");
-    lv_obj_align(device_name_label, LV_ALIGN_TOP_MID, 0, 25);
-    LOG_INF("[INIT] device name created");
+    // LOG_INF("[INIT] Creating device name...");
+    // device_name_label = lv_label_create(screen);
+    // lv_obj_set_style_text_font(device_name_label, &lv_font_unscii_16, 0);
+    // lv_obj_set_style_text_color(device_name_label, lv_color_white(), 0);
+    // lv_label_set_text(device_name_label, "Scanning...");
+    // lv_obj_align(device_name_label, LV_ALIGN_TOP_MID, 0, 25);
+    // LOG_INF("[INIT] device name created");
 
     /* ===== 2. Scanner Battery 已移除：dongle 自身不带电池，只显示左右手 L/R ===== */
 
     /* ===== 3. WPM Widget (TOP_LEFT, centered under title) ===== */
-    LOG_INF("[INIT] Creating WPM...");
-    wpm_title_label = lv_label_create(screen);
-    lv_obj_set_style_text_font(wpm_title_label, &lv_font_unscii_8, 0);
-    lv_obj_set_style_text_color(wpm_title_label, lv_color_make(0xA0, 0xA0, 0xA0), 0);
-    lv_label_set_text(wpm_title_label, "WPM");
-    lv_obj_set_pos(wpm_title_label, 20, 53);  /* 3px down */
+    // LOG_INF("[INIT] Creating WPM...");
+    // wpm_title_label = lv_label_create(screen);
+    // lv_obj_set_style_text_font(wpm_title_label, &lv_font_unscii_8, 0);
+    // lv_obj_set_style_text_color(wpm_title_label, lv_color_make(0xA0, 0xA0, 0xA0), 0);
+    // lv_label_set_text(wpm_title_label, "WPM");
+    // lv_obj_set_pos(wpm_title_label, 20, 53);  /* 3px down */
 
-    wpm_value_label = lv_label_create(screen);
-    lv_obj_set_style_text_font(wpm_value_label, &lv_font_montserrat_16, 0);
-    lv_obj_set_style_text_color(wpm_value_label, lv_color_white(), 0);
-    lv_obj_set_width(wpm_value_label, 48);  /* Fixed width for centering */
-    lv_obj_set_style_text_align(wpm_value_label, LV_TEXT_ALIGN_CENTER, 0);
-    lv_label_set_text(wpm_value_label, "0");
-    lv_obj_set_pos(wpm_value_label, 8, 66);  /* 3px down */
-    LOG_INF("[INIT] WPM created");
+    // wpm_value_label = lv_label_create(screen);
+    // lv_obj_set_style_text_font(wpm_value_label, &lv_font_montserrat_16, 0);
+    // lv_obj_set_style_text_color(wpm_value_label, lv_color_white(), 0);
+    // lv_obj_set_width(wpm_value_label, 48);  /* Fixed width for centering */
+    // lv_obj_set_style_text_align(wpm_value_label, LV_TEXT_ALIGN_CENTER, 0);
+    // lv_label_set_text(wpm_value_label, "0");
+    // lv_obj_set_pos(wpm_value_label, 8, 66);  /* 3px down */
+    // LOG_INF("[INIT] WPM created");
 
     /* ===== 4. Connection Status (TOP_RIGHT) ===== */
     LOG_INF("[INIT] Creating connection status...");
@@ -1828,26 +1828,26 @@ static void create_main_screen_widgets(void) {
     if (!screen_obj) return;
     LOG_INF("Creating main screen widgets...");
 
-    /* Recreate all main screen widgets using screen_obj */
-    device_name_label = lv_label_create(screen_obj);
-    lv_obj_set_style_text_font(device_name_label, &lv_font_unscii_16, 0);
-    lv_obj_set_style_text_color(device_name_label, lv_color_white(), 0);
-    lv_label_set_text(device_name_label, "Scanning...");
-    lv_obj_align(device_name_label, LV_ALIGN_TOP_MID, 0, 25);
+    // /* Recreate all main screen widgets using screen_obj */
+    // device_name_label = lv_label_create(screen_obj);
+    // lv_obj_set_style_text_font(device_name_label, &lv_font_unscii_16, 0);
+    // lv_obj_set_style_text_color(device_name_label, lv_color_white(), 0);
+    // lv_label_set_text(device_name_label, "Scanning...");
+    // lv_obj_align(device_name_label, LV_ALIGN_TOP_MID, 0, 25);
 
-    wpm_title_label = lv_label_create(screen_obj);
-    lv_obj_set_style_text_font(wpm_title_label, &lv_font_unscii_8, 0);
-    lv_obj_set_style_text_color(wpm_title_label, lv_color_make(0xA0, 0xA0, 0xA0), 0);
-    lv_label_set_text(wpm_title_label, "WPM");
-    lv_obj_set_pos(wpm_title_label, 20, 53);  /* 3px down */
+    // wpm_title_label = lv_label_create(screen_obj);
+    // lv_obj_set_style_text_font(wpm_title_label, &lv_font_unscii_8, 0);
+    // lv_obj_set_style_text_color(wpm_title_label, lv_color_make(0xA0, 0xA0, 0xA0), 0);
+    // lv_label_set_text(wpm_title_label, "WPM");
+    // lv_obj_set_pos(wpm_title_label, 20, 53);  /* 3px down */
 
-    wpm_value_label = lv_label_create(screen_obj);
-    lv_obj_set_style_text_font(wpm_value_label, &lv_font_montserrat_16, 0);
-    lv_obj_set_style_text_color(wpm_value_label, lv_color_white(), 0);
-    lv_obj_set_width(wpm_value_label, 48);  /* Fixed width for centering */
-    lv_obj_set_style_text_align(wpm_value_label, LV_TEXT_ALIGN_CENTER, 0);
-    lv_label_set_text(wpm_value_label, "0");
-    lv_obj_set_pos(wpm_value_label, 8, 66);  /* 3px down */
+    // wpm_value_label = lv_label_create(screen_obj);
+    // lv_obj_set_style_text_font(wpm_value_label, &lv_font_montserrat_16, 0);
+    // lv_obj_set_style_text_color(wpm_value_label, lv_color_white(), 0);
+    // lv_obj_set_width(wpm_value_label, 48);  /* Fixed width for centering */
+    // lv_obj_set_style_text_align(wpm_value_label, LV_TEXT_ALIGN_CENTER, 0);
+    // lv_label_set_text(wpm_value_label, "0");
+    // lv_obj_set_pos(wpm_value_label, 8, 66);  /* 3px down */
 
     transport_label = lv_label_create(screen_obj);
     lv_obj_set_style_text_font(transport_label, &lv_font_montserrat_12, 0);

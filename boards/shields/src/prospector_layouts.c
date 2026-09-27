@@ -155,15 +155,15 @@ void prospector_layouts_cycle_palette(void) {
     if (!initialized) return;
 
     switch (current_layout) {
-    case PROSPECTOR_LAYOUT_FIELD:
-        field_layout_cycle_palette();
-        break;
-    case PROSPECTOR_LAYOUT_OPERATOR:
-        operator_layout_cycle_palette();
-        break;
-    case PROSPECTOR_LAYOUT_RADII:
-        radii_layout_cycle_palette();
-        break;
+    // case PROSPECTOR_LAYOUT_FIELD:
+    //     field_layout_cycle_palette();
+    //     break;
+    // case PROSPECTOR_LAYOUT_OPERATOR:
+    //     operator_layout_cycle_palette();
+    //     break;
+    // case PROSPECTOR_LAYOUT_RADII:
+    //     radii_layout_cycle_palette();
+    //     break;
     default:
         break;
     }
@@ -190,15 +190,15 @@ const char *prospector_layouts_get_name(prospector_layout_t layout) {
 
 static void destroy_current_layout(void) {
     switch (current_layout) {
-    case PROSPECTOR_LAYOUT_FIELD:
-        field_layout_destroy();
-        break;
-    case PROSPECTOR_LAYOUT_OPERATOR:
-        operator_layout_destroy();
-        break;
-    case PROSPECTOR_LAYOUT_RADII:
-        radii_layout_destroy();
-        break;
+    // case PROSPECTOR_LAYOUT_FIELD:
+    //     field_layout_destroy();
+    //     break;
+    // case PROSPECTOR_LAYOUT_OPERATOR:
+    //     operator_layout_destroy();
+    //     break;
+    // case PROSPECTOR_LAYOUT_RADII:
+    //     radii_layout_destroy();
+    //     break;
     case PROSPECTOR_LAYOUT_YADS2:
         yads2_layout_destroy();
         break;
@@ -211,22 +211,22 @@ static void create_current_layout(void) {
     if (!parent_obj) return;
 
     switch (current_layout) {
-    case PROSPECTOR_LAYOUT_FIELD:
-        field_layout_create(parent_obj);
-        break;
-    case PROSPECTOR_LAYOUT_OPERATOR:
-        operator_layout_create(parent_obj);
-        break;
-    case PROSPECTOR_LAYOUT_RADII:
-        radii_layout_create(parent_obj);
-        break;
+    // case PROSPECTOR_LAYOUT_FIELD:
+    //     field_layout_create(parent_obj);
+    //     break;
+    // case PROSPECTOR_LAYOUT_OPERATOR:
+    //     operator_layout_create(parent_obj);
+    //     break;
+    // case PROSPECTOR_LAYOUT_RADII:
+    //     radii_layout_create(parent_obj);
+    //     break;
     case PROSPECTOR_LAYOUT_YADS2:
         yads2_layout_create(parent_obj);
         break;
     default:
         /* Fallback to Operator */
-        current_layout = PROSPECTOR_LAYOUT_OPERATOR;
-        operator_layout_create(parent_obj);
+        current_layout = PROSPECTOR_LAYOUT_YADS2;
+        yads2_layout_create(parent_obj);
         break;
     }
 }
@@ -270,34 +270,34 @@ static void update_current_layout(void) {
     bool ble_bonded = cached_data.ble_bonded;
 
     switch (current_layout) {
-    case PROSPECTOR_LAYOUT_FIELD:
-        field_layout_update(
-            active_layer, layer_name,
-            battery_level, battery_connected,
-            peripheral_battery[0], peripheral_connected[0],
-            wpm, modifier_flags,
-            usb_connected, ble_profile,
-            ble_connected, ble_bonded
-        );
-        break;
-    case PROSPECTOR_LAYOUT_OPERATOR:
-        operator_layout_update(
-            active_layer, layer_name,
-            battery_level, battery_connected,
-            peripheral_battery, peripheral_connected,
-            wpm, modifier_flags,
-            usb_connected, ble_profile,
-            ble_connected, ble_bonded
-        );
-        break;
-    case PROSPECTOR_LAYOUT_RADII:
-        radii_layout_update(
-            active_layer, layer_name,
-            battery_level, battery_connected,
-            peripheral_battery[0], peripheral_connected[0],
-            modifier_flags, usb_connected, ble_profile
-        );
-        break;
+    // case PROSPECTOR_LAYOUT_FIELD:
+    //     field_layout_update(
+    //         active_layer, layer_name,
+    //         battery_level, battery_connected,
+    //         peripheral_battery[0], peripheral_connected[0],
+    //         wpm, modifier_flags,
+    //         usb_connected, ble_profile,
+    //         ble_connected, ble_bonded
+    //     );
+    //     break;
+    // case PROSPECTOR_LAYOUT_OPERATOR:
+    //     operator_layout_update(
+    //         active_layer, layer_name,
+    //         battery_level, battery_connected,
+    //         peripheral_battery, peripheral_connected,
+    //         wpm, modifier_flags,
+    //         usb_connected, ble_profile,
+    //         ble_connected, ble_bonded
+    //     );
+    //     break;
+    // case PROSPECTOR_LAYOUT_RADII:
+    //     radii_layout_update(
+    //         active_layer, layer_name,
+    //         battery_level, battery_connected,
+    //         peripheral_battery[0], peripheral_connected[0],
+    //         modifier_flags, usb_connected, ble_profile
+    //     );
+    //     break;
     case PROSPECTOR_LAYOUT_YADS2:
         yads2_layout_update(
             active_layer, layer_name,

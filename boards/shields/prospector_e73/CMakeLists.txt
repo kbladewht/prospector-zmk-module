@@ -20,7 +20,7 @@ if(CONFIG_SHIELD_PROSPECTOR_e73 OR CONFIG_SHIELD_PROSPECTOR_SCANNER)
 
     # CUSTOM screen support (from display_test)
     target_sources_ifdef(CONFIG_ZMK_DISPLAY_STATUS_SCREEN_CUSTOM app PRIVATE ${PROSPECTOR_SHIELD_SRC}/custom_status_screen.c)
-    target_sources_ifdef(CONFIG_ZMK_DISPLAY_STATUS_SCREEN_CUSTOM app PRIVATE ${PROSPECTOR_SHIELD_SRC}/hello_widget.c)
+    # target_sources_ifdef(CONFIG_ZMK_DISPLAY_STATUS_SCREEN_CUSTOM app PRIVATE ${PROSPECTOR_SHIELD_SRC}/hello_widget.c)
 
     # 状态屏数据源（替代原模块 scanner_core.c，接口名为 ble_*）
     target_sources_ifdef(CONFIG_ZMK_DISPLAY_STATUS_SCREEN_CUSTOM app PRIVATE ${PROSPECTOR_SHIELD_SRC}/s7789_update.c)
@@ -29,10 +29,10 @@ if(CONFIG_SHIELD_PROSPECTOR_e73 OR CONFIG_SHIELD_PROSPECTOR_SCANNER)
     target_sources_ifdef(CONFIG_ZMK_DISPLAY_STATUS_SCREEN_CUSTOM app PRIVATE ${PROSPECTOR_SHIELD_SRC}/s7789_update_battery.c)
 
     # Swipe gesture event (ZMK event system - thread-safe)
-    target_sources_ifdef(CONFIG_ZMK_DISPLAY_STATUS_SCREEN_CUSTOM app PRIVATE ${PROSPECTOR_SHIELD_SRC}/events/swipe_gesture_event.c)
+    # target_sources_ifdef(CONFIG_ZMK_DISPLAY_STATUS_SCREEN_CUSTOM app PRIVATE ${PROSPECTOR_SHIELD_SRC}/events/swipe_gesture_event.c)
 
     # Touch handler (when touch is enabled)
-    target_sources_ifdef(CONFIG_PROSPECTOR_TOUCH_ENABLED app PRIVATE ${PROSPECTOR_SHIELD_SRC}/touch_handler.c)
+    # target_sources_ifdef(CONFIG_PROSPECTOR_TOUCH_ENABLED app PRIVATE ${PROSPECTOR_SHIELD_SRC}/touch_handler.c)
 
     # Keyboard state tracking lives in the module (src/scanner_core.c) so that
     # every scanner shield shares it - nothing shield-local to add here.
@@ -54,9 +54,9 @@ if(CONFIG_SHIELD_PROSPECTOR_e73 OR CONFIG_SHIELD_PROSPECTOR_SCANNER)
 
     # Prospector Display layouts (Carrefinho-inspired)
     target_sources_ifdef(CONFIG_ZMK_DISPLAY_STATUS_SCREEN_CUSTOM app PRIVATE ${PROSPECTOR_SHIELD_SRC}/prospector_layouts.c)
-    target_sources_ifdef(CONFIG_ZMK_DISPLAY_STATUS_SCREEN_CUSTOM app PRIVATE ${PROSPECTOR_SHIELD_SRC}/field_layout.c)
-    target_sources_ifdef(CONFIG_ZMK_DISPLAY_STATUS_SCREEN_CUSTOM app PRIVATE ${PROSPECTOR_SHIELD_SRC}/operator_layout.c)
-    target_sources_ifdef(CONFIG_ZMK_DISPLAY_STATUS_SCREEN_CUSTOM app PRIVATE ${PROSPECTOR_SHIELD_SRC}/radii_layout.c)
+    # target_sources_ifdef(CONFIG_ZMK_DISPLAY_STATUS_SCREEN_CUSTOM app PRIVATE ${PROSPECTOR_SHIELD_SRC}/field_layout.c)
+    # target_sources_ifdef(CONFIG_ZMK_DISPLAY_STATUS_SCREEN_CUSTOM app PRIVATE ${PROSPECTOR_SHIELD_SRC}/operator_layout.c)
+    # target_sources_ifdef(CONFIG_ZMK_DISPLAY_STATUS_SCREEN_CUSTOM app PRIVATE ${PROSPECTOR_SHIELD_SRC}/radii_layout.c)
     target_sources_ifdef(CONFIG_ZMK_DISPLAY_STATUS_SCREEN_CUSTOM app PRIVATE ${PROSPECTOR_SHIELD_SRC}/yads2_layout.c)
 
     # Carrefinho custom fonts
