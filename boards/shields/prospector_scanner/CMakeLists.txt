@@ -1,8 +1,7 @@
 # Prospector Scanner CMakeLists.txt
 # Step-by-step restoration from display_test
 
-# 源码目录：显示相关的源码统一放在 shields 根目录下的 src/（boards/shields/src，
-# 由 prospector_e73 / prospector_scanner 两个 shield 共用），这里相对本文件指过去。
+
 set(PROSPECTOR_SHIELD_SRC ${CMAKE_CURRENT_SOURCE_DIR}/../src)
 
 if(CONFIG_SHIELD_PROSPECTOR_SCANNER)

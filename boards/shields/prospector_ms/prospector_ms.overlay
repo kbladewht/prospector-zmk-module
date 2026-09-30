@@ -1,5 +1,5 @@
 /*
- * Display Test - ST7789V + Touch (CST816S)
+ * Display Test - ST7789V
  * Pin mapping from Prospector Scanner
  */
 
@@ -31,13 +31,6 @@
     // };
 };
 
-// /* USB CDC ACM for logging */
-// &zephyr_udc0 {
-//     cdc_acm_uart: cdc_acm_uart {
-//         compatible = "zephyr,cdc-acm-uart";
-//     };
-// };
-
 /* Disable default SPI2 */
 &spi2 {
     status = "disabled";
@@ -55,7 +48,7 @@
     pwm0_sleep: pwm0_sleep {
         group1 {
             // psels = <NRF_PSEL(PWM_OUT0, 1, 11)>;
-            psels = <NRF_PSEL(PWM_OUT0, 0, 6)>;
+            psels = <NRF_PSEL(PWM_OUT0, 0, 6)>;//D6
             low-power-enable;
         };
     };
@@ -101,7 +94,7 @@
     pinctrl-0 = <&spi3_default>;
     pinctrl-1 = <&spi3_sleep>;
     pinctrl-names = "default", "sleep";
-    cs-gpios = <&kblade_ms 9 GPIO_ACTIVE_LOW>;//P100
+    cs-gpios = <&kblade_ms 9 GPIO_ACTIVE_LOW>;//P1.00
 };
 
 /* MIPI DBI wrapper for ST7789V */

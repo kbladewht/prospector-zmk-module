@@ -1,16 +1,11 @@
 # Prospector Scanner CMakeLists.txt
 # Step-by-step restoration from display_test
 
-# 源码目录：显示相关的源码统一放在 shields 根目录下的 src/（boards/shields/src，
-# 由 prospector_e73 / prospector_scanner 两个 shield 共用），这里相对本文件指过去。
+
 set(PROSPECTOR_SHIELD_SRC ${CMAKE_CURRENT_SOURCE_DIR}/../src)
 
-# 注意：prospector_e73/Kconfig.shield 里定义的符号目前仍叫
-# SHIELD_PROSPECTOR_SCANNER（def_bool $(shields_list_contains,prospector_e73)），
-# 因此这里两个符号都接受，避免符号名对不上时一个源文件都不参与编译。
-# （只看 CONFIG_SHIELD_PROSPECTOR_MS 会导致条件恒为假：.config 里只有
-#   CONFIG_SHIELD_PROSPECTOR_SCANNER=y，共享 src/*.c 全部漏编译。）
-if(CONFIG_SHIELD_PROSPECTOR_MS OR CONFIG_SHIELD_PROSPECTOR_SCANNER)
+
+# if(CONFIG_SHIELD_PROSPECTOR_ms OR CONFIG_SHIELD_PROSPECTOR_SCANNER)
     # Backlight initialization (always needed)
     target_sources(app PRIVATE ${PROSPECTOR_SHIELD_SRC}/backlight_init.c)
 
@@ -104,7 +99,7 @@ if(CONFIG_SHIELD_PROSPECTOR_MS OR CONFIG_SHIELD_PROSPECTOR_SCANNER)
 
     # Include path for the shared sources (headers live next to the .c files)
     target_include_directories(app PRIVATE ${PROSPECTOR_SHIELD_SRC})
-endif()
+# endif()
 
 # ORIGINAL FULL BUILD - TO BE RESTORED INCREMENTALLY
 # if(CONFIG_SHIELD_PROSPECTOR_SCANNER)

@@ -36,11 +36,3 @@ void scanner_set_runtime_channel(uint8_t channel) {
     LOG_INF("Scanner channel set to %d (%s, saved to NVS)",
             channel, channel == 0 ? "All" : "Filtered");
 }
-
-/* ---------------------------------------------------------------------------
- * 下面是原来给触摸专属“Quick Actions”页用的 LVGL 设置面板（按钮 + 标签）。
- * 触摸功能（CONFIG_PROSPECTOR_TOUCH_ENABLED）已整体移除，该面板没有任何调用
- * 方，LVGL 的 button 控件也已在 prospector_e73.conf 里关掉，所以整块删除。
- * 上面的频道 get/set 函数保留：custom_status_screen.c 仍以强符号链接它们
- * （它自己那份是 __attribute__((weak))）。
- * ------------------------------------------------------------------------- */
