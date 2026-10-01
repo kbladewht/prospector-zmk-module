@@ -85,7 +85,10 @@ void custom_status_screen_log_create(lv_obj_t *parent) {
     lv_obj_set_style_text_color(log_label, lv_color_hex(0x00FF00), 0);
     lv_obj_set_style_text_line_space(log_label, 0, 0);
     lv_obj_set_style_text_align(log_label, LV_TEXT_ALIGN_LEFT, 0);
-    lv_obj_set_width(log_label, 280);
+    /* 宽度按字符网格算：MAX_COLS x 10px 字宽。
+     * 小屏 = 28 x 10 = 280（铺满 280 宽）；配 big-lcd snippet 时
+     * MAX_COLS=32 -> 320（铺满大屏的 320 宽）。固定用 280 会让大屏右边空一条。 */
+    lv_obj_set_width(log_label, CONFIG_PROSPECTOR_DISPLAY_LOG_MAX_COLS * 10);
     lv_label_set_long_mode(log_label, LV_LABEL_LONG_CLIP);
     lv_obj_set_pos(log_label, 0, 0);
 

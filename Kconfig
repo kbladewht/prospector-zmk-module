@@ -644,6 +644,25 @@ config PROSPECTOR_DISPLAY_LOG_PAGE
 
       按键/层/手势等触发入口由使用方决定，当前没有绑定。
 
+config BIG_LCD
+    bool "ST7789V 240x320：横屏用满 320 像素宽"
+    default n
+    help
+      装了 240x320 的 ST7789V 时打开。小屏是 240x280（旋转后 280x240，设备树
+      width=280 / x-offset=20）；打开后显示窗口改成 width=320 / x-offset=0，
+      状态屏内容照旧画在左边 280 里（右边多出的 40px 留空），日志页则能多排
+      几列字符（28 -> 32 列）。
+
+      重要：屏幕分辨率是编译期由设备树决定的，而 Zephyr 的 Kconfig 依赖设备树
+      生成（DT_HAS_*），Kconfig 跑在 DTS 之后 —— 所以本符号没法反过来去改设备树
+      （pre_dt_board.cmake 里 CONFIG_* 还是空的；shield 的 CMakeLists 里虽然能
+      读到 CONFIG_*，但那时 zephyr.dts 已经生成完了）。因此本选项必须由配套的
+      snippet 一起打开，它同时注入 overlay（改窗口）和这条 .conf：
+
+          west build ... -S big-lcd
+
+      C 代码里用 IS_ENABLED(CONFIG_BIG_LCD) 判断即可。
+
 config PROSPECTOR_DISPLAY_LOG_MAX_COLS
     int "日志页每行最多字符数"
     range 8 46

@@ -1,0 +1,4 @@
+name: big-lcd
+append:
+  EXTRA_DTC_OVERLAY_FILE: big-lcd.overlay
+  EXTRA_CONF_FILE: big-lcd.conf
