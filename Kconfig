@@ -655,11 +655,21 @@ config BIG_LCD
 
       重要：屏幕分辨率是编译期由设备树决定的，而 Zephyr 的 Kconfig 依赖设备树
       生成（DT_HAS_*），Kconfig 跑在 DTS 之后 —— 所以本符号没法反过来去改设备树
-      （pre_dt_board.cmake 里 CONFIG_* 还是空的；shield 的 CMakeLists 里虽然能
-      读到 CONFIG_*，但那时 zephyr.dts 已经生成完了）。因此本选项必须由配套的
-      snippet 一起打开，它同时注入 overlay（改窗口）和这条 .conf：
+      （实测：pre_dt_board.cmake 里 CONFIG_* 还是空的；shield 的 CMakeLists 里
+      虽然能读到 CONFIG_*，但那时 zephyr.dts 已经生成完了）。因此设备树那半边
+      由构建时的宏控制，见各 shield 的 .overlay：
 
-          west build ... -S big-lcd
+          #ifdef BIG_LCD
+              width = <320>;  x-offset = <0>;
+          #else
+              width = <280>;  x-offset = <20>;
+          #endif
+
+      切换方式（corne_l_e73.sh / corne_l_ms.sh 里已带开关变量）：
+
+          west build ... -- -DDTS_EXTRA_CPPFLAGS=-DBIG_LCD \
+                             -DCONFIG_BIG_LCD=y \
+                             -DCONFIG_PROSPECTOR_DISPLAY_LOG_MAX_COLS=32
 
       C 代码里用 IS_ENABLED(CONFIG_BIG_LCD) 判断即可。
 

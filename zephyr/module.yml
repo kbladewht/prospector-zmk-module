@@ -5,7 +5,5 @@ build:
   settings:
     board_root: .
     dts_root: .
-    # snippet_root 必须是 snippets/ 的父目录（Zephyr 会去找 <root>/snippets/**/snippet.yml）
-    snippet_root: .
   depends:
     - lvgl

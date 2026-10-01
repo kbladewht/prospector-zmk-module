@@ -128,9 +128,17 @@
              * 提到 32MHz 后同样一帧 ~34ms（约 29fps），滚动顺很多。 */
             mipi-max-frequency = <32000000>;
             mipi-mode = "MIPI_DBI_MODE_SPI_4WIRE";
+            /* 大屏 240x320 切换：构建时加 -DDTS_EXTRA_CPPFLAGS=-DBIG_LCD
+             * （见 corne_l_e73.sh）。定义了就横屏用满 320 像素宽；不定义就是
+             * 小屏 240x280（旋转后 280x240，需要 x-offset=20 把画面居中）。 */
+#ifdef BIG_LCD
+            width = <320>;
+            x-offset = <0>;
+#else
             width = <280>;
-            height = <240>;
             x-offset = <20>;
+#endif
+            height = <240>;
             y-offset = <0>;
             /* Zephyr 4.1: inversion is ON by default, use inversion-off to disable */
             vcom = <0x19>;
