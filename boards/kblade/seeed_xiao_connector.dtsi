@@ -6,7 +6,7 @@
  */
 
 / {
-	xiao_d: connector {
+	xiao_d: xiao_d_connector {
 		compatible = "seeed,xiao-gpio";
 		#gpio-cells = <2>;
 		gpio-map-mask = <0xffffffff 0xffffffc0>;
@@ -29,7 +29,7 @@
 
 
 / {
-	kblade_d: connector {
+	kblade_d: kblade_d_connector {
 		compatible = "seeed,xiao-gpio";
 		#gpio-cells = <2>;
 		gpio-map-mask = <0xffffffff 0xffffffc0>;
@@ -52,7 +52,7 @@
 
 
 / {
-	kblade_ms: connector {
+	kblade_ms: kblade_ms_connector {
 		compatible = "seeed,xiao-gpio";
 		#gpio-cells = <2>;
 		gpio-map-mask = <0xffffffff 0xffffffc0>;
