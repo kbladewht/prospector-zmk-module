@@ -10,7 +10,7 @@ set(PROSPECTOR_SHIELD_SRC ${CMAKE_CURRENT_SOURCE_DIR}/../src)
 # 因此这里两个符号都接受，避免符号名对不上时一个源文件都不参与编译。
 # （只看 CONFIG_SHIELD_PROSPECTOR_e73 会导致条件恒为假：.config 里只有
 #   CONFIG_SHIELD_PROSPECTOR_SCANNER=y，共享 src/*.c 全部漏编译。）
-if(CONFIG_SHIELD_PROSPECTOR_e73 OR CONFIG_SHIELD_PROSPECTOR_SCANNER)
+# if(CONFIG_SHIELD_PROSPECTOR_e73 OR CONFIG_SHIELD_PROSPECTOR_SCANNER)
     # Backlight initialization (always needed)
     target_sources(app PRIVATE ${PROSPECTOR_SHIELD_SRC}/backlight_init.c)
 
@@ -87,24 +87,16 @@ if(CONFIG_SHIELD_PROSPECTOR_e73 OR CONFIG_SHIELD_PROSPECTOR_SCANNER)
         ${PROSPECTOR_SHIELD_SRC}/fonts_carrefinho/Symbols_Semibold_32.c
     )
 
-    # 日志屏的两条路（都不影响正常键盘固件）：
-    #  1) CONFIG_PROSPECTOR_DISPLAY_LOG=y      专用日志固件：屏归 qf_display_log.c，
-    #     需同时 CONFIG_ZMK_DISPLAY=n，点阵字体也由它自己用
-    #  2) CONFIG_PROSPECTOR_DISPLAY_LOG_PAGE=y 正常固件里的"日志页"：屏仍归 LVGL，
-    #     该文件只提供日志采集，文本交给 lv_label 渲染，所以不需要自带点阵字体
-    if(CONFIG_PROSPECTOR_DISPLAY_LOG OR CONFIG_PROSPECTOR_DISPLAY_LOG_PAGE)
-        target_sources(app PRIVATE ${PROSPECTOR_SHIELD_SRC}/qf_display_log.c)
-    endif()
-    target_sources_ifdef(CONFIG_PROSPECTOR_DISPLAY_LOG app PRIVATE ${PROSPECTOR_SHIELD_SRC}/qf_display_log_font.c)
+    # 日志采集层：qf_display_log.c 注册一个额外的日志后端 + 环形行缓冲，
+    # 文本由日志页（custom_status_screen_log.c）用 lv_label 渲染。
+    target_sources_ifdef(CONFIG_PROSPECTOR_DISPLAY_LOG_PAGE app PRIVATE ${PROSPECTOR_SHIELD_SRC}/qf_display_log.c)
 
-    # 日志页的等宽字体 qf_font_log_10x16：由上面那份 10x16 点阵（qf_display_log_font.c，
-    # 只在日志固件模式下编译）离线转成的 LVGL 静态字体，所以日志页不能复用那个 .c，
-    # 必须单独编这个文件。10px 宽 / 16px 高 -> 一行 28 字符、一屏 15 行。
+    # 日志页的等宽字体 qf_font_log_10x16：10px 宽 / 16px 高 -> 一行 28 字符、一屏 15 行。
     target_sources_ifdef(CONFIG_PROSPECTOR_DISPLAY_LOG_PAGE app PRIVATE ${PROSPECTOR_SHIELD_SRC}/qf_display_log_lvfont.c)
 
     # Include path for the shared sources (headers live next to the .c files)
     target_include_directories(app PRIVATE ${PROSPECTOR_SHIELD_SRC})
-endif()
+# endif()
 
 # ORIGINAL FULL BUILD - TO BE RESTORED INCREMENTALLY
 # if(CONFIG_SHIELD_PROSPECTOR_SCANNER)

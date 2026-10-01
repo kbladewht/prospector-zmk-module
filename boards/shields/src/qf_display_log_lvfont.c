@@ -1,9 +1,8 @@
 /*
- * qf_display_log_lvfont.c - 由 qf_display_log_font.c 的 10x16 点阵转成的
+ * qf_display_log_lvfont.c - 10x16 点阵（DroidSansMono 10x16）转成的
  * LVGL 静态字体（ASCII 0x20..0x7e，95 个字形）。本文件由脚本生成，勿手工编辑。
  *
- * 字形点阵 10px 宽 x 16px 高（DroidSansMono 10x16，见 qf_display_log_font.c
- * 的来源说明），是等宽字体，所以 280 像素宽的屏一行正好 28 个字符、
+ * 字形 10px 宽 x 16px 高，是等宽字体，所以 280 像素宽的屏一行正好 28 个字符、
  * 240 像素高的屏正好 15 行 —— 比 lv_font_unscii_8（8x9）大一倍且仍能放满屏，
  * 又比 lv_font_unscii_16（16x17）窄得多（后者一行只有 17 个字符）。
  *

@@ -38,12 +38,11 @@ LOG_MODULE_REGISTER(display_log_page, LOG_LEVEL_INF);
 
 /* ========== 日志页（第 6 页）==========
  *
- * 内容来自 qf_display_log.c 的采集层（和 USB 串口/日志固件是同一批日志），
+ * 内容来自 qf_display_log.c 的采集层（和 USB 串口是同一批日志），
  * 这里只负责用 LVGL 画出来。
  *
- * 字体用 qf_font_log_10x16（见 qf_display_log_lvfont.c）：它就是把日志固件那份
- * 自带的 10x16 DroidSansMono 点阵转成 LVGL 静态字体得到的，等宽，每字符
- * 10px 宽、16px 行高，于是
+ * 字体用 qf_font_log_10x16（见 qf_display_log_lvfont.c）：DroidSansMono 10x16
+ * 点阵转成的 LVGL 静态字体，等宽，每字符 10px 宽、16px 行高，于是
  *   CONFIG_PROSPECTOR_DISPLAY_LOG_MAX_COLS（28）x 10px = 280px  铺满屏宽
  *   CONFIG_PROSPECTOR_DISPLAY_LOG_LINES   （15）x 16px = 240px  铺满屏高
  * 正好占满 280x240 的面板。正文从 (0,0) 起、上面不放标题条：标题会额外占掉
@@ -52,7 +51,7 @@ LOG_MODULE_REGISTER(display_log_page, LOG_LEVEL_INF);
  * 为什么不用 LVGL 自带的两个等宽字体：lv_font_unscii_8 只有 8x9，在本机上太小
  * 看不清；lv_font_unscii_16 是 16px 全宽，一行只放得下 17 个字符，日志会被截掉
  * 大半。10x16 既高一倍，又比 unscii_16 窄 37%，一屏仍有 28 x 15 = 420 个字符。
- * 屏归 LVGL，所以这里绝不用 display_write()（那是日志固件的事）。
+ * 屏归 LVGL，所以这里绝不用 display_write()。
  *
  * 默认不显示：不进日志页时屏上行为和以前完全一样。
  * 切换由 display_log_page_show() 请求，见 custom_status_screen.h。

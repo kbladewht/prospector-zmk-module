@@ -616,39 +616,6 @@ config PROSPECTOR_DEBUG_WIDGET
       Positioned in modifier area when no modifier keys are active.
       ENABLE for development and debugging, DISABLE for production use.
 
-config PROSPECTOR_DISPLAY_LOG
-    bool "7789 屏日志控制台（纯日志固件，不经 LVGL）"
-    default n
-    depends on DISPLAY
-    help
-      Enable a raw text console on the ST7789V (7789) display: the Zephyr log
-      stream is rendered with a built-in 10x16 bitmap font through the
-      standard display API (display_write) - no LVGL, no ZMK status screen.
-
-      Use it when you want to read logs on the device itself (no USB/serial
-      attached). Recommended: build a dedicated firmware that turns the normal
-      UI off, which is also the cheapest in RAM:
-
-        cd app
-        west build -p always -d build-log -b kblade//zmk -S zmk-usb-logging -- \
-          -DSHIELD="prospector_e73 corne_dongle" -DCONFIG_ZMK_BLE=y \
-          -DKEYBOARD=pilot/npad -DKEYMAP=corne_dongle \
-          -DCONFIG_PROSPECTOR_DISPLAY_LOG=y \
-          -DCONFIG_ZMK_DISPLAY=n -DCONFIG_LVGL=n \
-          -DZMK_EXTRA_MODULES="<repo>/modules/prospector-zmk-module"
-
-      (仓库根目录的 e73_log.sh 就是这条命令，构建目录用 build-log，
-       不会覆盖平常用的 app/build。)
-
-      Log source depends on the log mode:
-      - CONFIG_LOG_MODE_DEFERRED (default): an extra log backend is registered
-        next to the USB/UART backend, so screen and serial show the same
-        stream. 屏上的等级/模块名/时间戳格式化由 Zephyr log_output 完成。
-      - CONFIG_LOG_MODE_MINIMAL=y: minimal 模式没有后端，这里改为接管 printk
-        的字符出口，屏成为唯一输出（USB/串口日志同时消失），开销最小。
-
-      开启本选项时必须同时关掉 CONFIG_ZMK_DISPLAY：屏只能有一个主人。
-
 config PROSPECTOR_DISPLAY_LOG_PAGE
     bool "正常固件里的日志页（LVGL 屏上翻日志）"
     default y
@@ -661,17 +628,14 @@ config PROSPECTOR_DISPLAY_LOG_PAGE
     # 注意别换成 lv_font_unscii_16：那是全宽字体（adv_w = 256/16 = 16px），
     # 一行只放得下 17 个字符，行高也变成 17px；也别退回 unscii_8（只有 8x9，太小）。
     help
-      正常固件里多出一"页日志"：屏仍归 LVGL（状态屏照常工作），日志采集复用
-      qf_display_log.c —— 同样一个额外的日志后端（与 USB/UART 后端并存，
-      屏上和串口是同一批日志）、同一套环形行缓冲，只是最终的显示交给
+      正常固件里多出一"页日志"：屏仍归 LVGL（状态屏照常工作），日志采集由
+      qf_display_log.c 提供 —— 一个额外的日志后端（与 USB/UART 后端并存，
+      屏上和串口是同一批日志）、一套环形行缓冲，最终的显示交给
       custom_status_screen_log.c 的日志页（拆自 custom_status_screen.c）
       用 lv_label 画出来。
 
-      和 PROSPECTOR_DISPLAY_LOG 的区别：
-      - PROSPECTOR_DISPLAY_LOG 是专用日志固件（需 CONFIG_ZMK_DISPLAY=n）：
-        省掉整个 LVGL/状态屏，RAM 最省，但设备只能看日志。
-      - 本选项不新增固件，也不抢屏，代价只是常驻的行缓冲，加上每条日志
-        多做一次字符拷贝。
+      本选项不新增固件，也不抢屏，代价只是常驻的行缓冲，加上每条日志
+      多做一次字符拷贝。
 
       默认不显示日志页：开机仍然是正常的电量/状态主屏。要显示由应用调用：
 
@@ -681,103 +645,38 @@ config PROSPECTOR_DISPLAY_LOG_PAGE
       按键/层/手势等触发入口由使用方决定，当前没有绑定。
 
 config PROSPECTOR_DISPLAY_LOG_MAX_COLS
-    int "日志屏每行最多字符数"
+    int "日志页每行最多字符数"
     range 8 46
     default 28
-    depends on PROSPECTOR_DISPLAY_LOG || PROSPECTOR_DISPLAY_LOG_PAGE
+    depends on PROSPECTOR_DISPLAY_LOG_PAGE
     help
       保留每行最多多少字符，超宽的行自动折行（和串口终端一样）。
 
-      两种模式现在用的是同一份 10x16 点阵（每字符 10px 宽），铺满 280 像素屏宽
-      都是 280 / 10 = 28 个字符：
-      - PROSPECTOR_DISPLAY_LOG_PAGE（LVGL 日志页，等宽字体 qf_font_log_10x16）：
-        设 28，28 x 10px = 280px 正好铺满整屏宽。
-      - PROSPECTOR_DISPLAY_LOG（专用日志固件，复用同一份点阵）：
-        它自己会再按 cap.x_resolution / 10 取 MIN（见 qf_display_log.c 的
-        s_cols），所以这里设大也不会画出屏外。
-      该值还决定行像素缓冲的静态内存占用（仅日志固件模式用到该缓冲：
-      RAM ≈ MAX_COLS * 10 * 16 * 2 字节），不要设太大。
+      日志页用的是等宽字体 qf_font_log_10x16（每字符 10px 宽），铺满 280 像素
+      屏宽就是 280 / 10 = 28 个字符，所以默认 28。该值同时也决定行缓冲的
+      静态内存占用（RAM ≈ LINES * (MAX_COLS + 1) 字节），不要设太大。
 
 config PROSPECTOR_DISPLAY_LOG_LINES
     int "环形行缓冲的行数"
     range 4 30
     default 15
-    depends on PROSPECTOR_DISPLAY_LOG || PROSPECTOR_DISPLAY_LOG_PAGE
+    depends on PROSPECTOR_DISPLAY_LOG_PAGE
     help
-      保留最近多少行日志。两种模式现在都是 16px 行高（同一份 10x16 点阵），
-      铺满 240 像素屏高都是 240 / 16 = 15 行：
-      - PROSPECTOR_DISPLAY_LOG_PAGE：qf_font_log_10x16 行高 16px，设 15，
-        15 x 16px = 240px 正好铺满整屏高。
-      - PROSPECTOR_DISPLAY_LOG：同一份点阵；它自己会再按
-        cap.y_resolution / 16 取 MIN（s_disp_rows）。
-
-config PROSPECTOR_DISPLAY_LOG_REFRESH_MS
-    int "兜底刷屏周期（毫秒）"
-    range 20 2000
-    default 100
-    depends on PROSPECTOR_DISPLAY_LOG
-    help
-      正常情况下刷屏是事件驱动的（每攒满一行日志就刷，见
-      PROSPECTOR_DISPLAY_LOG_SETTLE_MS）；这个值只是兜底，防止极端情况下
-      内容变了却没刷。空闲时本模块完全不碰 SPI。
-
-config PROSPECTOR_DISPLAY_LOG_SETTLE_MS
-    int "新日志到刷屏之间的等待（毫秒）"
-    range 1 500
-    default 10
-    depends on PROSPECTOR_DISPLAY_LOG
-    help
-      每写完一整行日志就唤醒刷屏任务，等这么久（期间又来新行也只是顺延到
-      "最后一次新行之后"）才真正写屏，把密集的日志合并成一次刷新。
-      默认 10ms：屏上几乎和串口一样即时，又不会为每一行日志单独开一次刷新。
-      原来的实现是固定 300ms 轮询，所以屏上总像慢了半拍。
-
-config PROSPECTOR_DISPLAY_LOG_ROWS_PER_CYCLE
-    int "每轮最多写几行屏（仅回绕写模式）"
-    range 1 30
-    default 6
-    depends on PROSPECTOR_DISPLAY_LOG
-    help
-      回绕写模式下每轮刷屏最多写多少行，没画完的下一轮（1ms 后）接着画。
-      一行 280 像素宽约 8960 字节，20MHz SPI 下约 3.5ms，取 6 即单次最多
-      占用系统工作队列约 20ms。
-
-config PROSPECTOR_DISPLAY_LOG_WRAP
-    bool "回绕写模式（更省更快，满屏后不再整屏上滚）"
-    default n
-    depends on PROSPECTOR_DISPLAY_LOG
-    help
-      默认（n）：终端式滚动 —— 屏不满时逐行往下填，满了以后新行到来整屏上移
-      一行，观感最像串口终端。代价是满屏后每来一行要重写整屏
-      （约 134KB / 50ms），日志比 ~20 行/秒更密时 SPI 会跟不上。
-
-      y：回绕写 —— 新行写到下一行光标位置，到底后回到第 0 行覆盖最旧内容。
-      任何时刻一轮只写一行（约 3.5ms），日志再密也不会拖慢键盘和无线；
-      代价是满屏后不是"整屏上滚"，而是从顶部覆盖（能看到跳变）。
-
-      两种模式在"屏还没满"时都一样：每条日志只写一行。
+      保留最近多少行日志。日志页用的是 16px 行高（qf_font_log_10x16），铺满
+      240 像素屏高就是 240 / 16 = 15 行，所以默认 15。
 
 config PROSPECTOR_DISPLAY_LOG_LEVEL_PREFIX
-    bool "屏幕上显示 <inf> 这类日志等级前缀"
+    bool "日志页显示 <inf> 这类日志等级前缀"
     default n
-    depends on PROSPECTOR_DISPLAY_LOG || PROSPECTOR_DISPLAY_LOG_PAGE
+    depends on PROSPECTOR_DISPLAY_LOG_PAGE
     help
       默认关闭。280 像素宽只放得下 28 个字符，而 "<inf> " 前缀就要占 6 个，
-      关掉能明显减少折行（日志等级仍然用颜色区分，见
-      PROSPECTOR_DISPLAY_LOG_COLORS）。
+      关掉能明显减少折行。
 
 config PROSPECTOR_DISPLAY_LOG_TIMESTAMP
-    bool "屏幕上显示日志时间戳"
+    bool "日志页显示日志时间戳"
     default n
-    depends on PROSPECTOR_DISPLAY_LOG || PROSPECTOR_DISPLAY_LOG_PAGE
+    depends on PROSPECTOR_DISPLAY_LOG_PAGE
     help
       时间戳形如 [00:00:12.345,678]，要占 21 个字符（接近一整行），所以
       默认关闭。
-
-config PROSPECTOR_DISPLAY_LOG_COLORS
-    bool "按日志等级给文字着色"
-    default y
-    depends on PROSPECTOR_DISPLAY_LOG || PROSPECTOR_DISPLAY_LOG_PAGE
-    help
-      err 红色、wrn 黄色、inf 绿色、dbg 灰色、其它白色，背景全黑。
-      关掉则所有文字都是白色（最省一点代码空间）。

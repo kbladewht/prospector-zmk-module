@@ -7,16 +7,9 @@
 /*
  * qf_display_log.h - qf_display_log.c 的日志采集层对外接口
  *
- * 两种用法共用同一份采集（环形行缓冲 + 额外的日志后端）：
- *
- *  1) 日志固件（CONFIG_PROSPECTOR_DISPLAY_LOG=y, CONFIG_ZMK_DISPLAY=n）
- *     屏由 qf_display_log.c 直接 display_write 绘制，本头文件的接口用不到。
- *
- *  2) 正常固件里的"日志页"（CONFIG_PROSPECTOR_DISPLAY_LOG_PAGE=y,
- *     CONFIG_ZMK_DISPLAY=y）屏归 LVGL，屏上要显示什么由 LVGL 决定：
- *     custom_status_screen.c 的日志页用下面三个接口把文本读走，
- *     再用 lv_label 画出来（见 custom_status_screen.h 的
- *     display_log_page_show()）。
+ * 日志页（CONFIG_PROSPECTOR_DISPLAY_LOG_PAGE=y, CONFIG_ZMK_DISPLAY=y）用下面
+ * 几个接口把环形行缓冲里的文本读走，再用 lv_label 画出来（见
+ * custom_status_screen.h 的 display_log_page_show()）。
  *
  * 这里只读写内存，不碰 display API，也不依赖 LVGL，任意上下文可调用。
  */
@@ -56,6 +49,6 @@ bool qf_display_log_take_dirty(void);
 /**
  * @brief 清空行缓冲（回到"一块空屏"的状态）
  *
- * 只在日志页/日志固件的显示线程或初始化阶段调用。
+ * 只在日志页的显示线程或初始化阶段调用。
  */
 void qf_display_log_clear(void);
