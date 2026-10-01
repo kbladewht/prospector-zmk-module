@@ -107,7 +107,7 @@ LV_FONT_DECLARE(lv_font_montserrat_12);
 /* 顶部中间的设备名写死（两行居中显示），不再跟随广播里的 keyboard_name
  * （CONFIG_ZMK_KEYBOARD_NAME）：Prospector 在这里是 dongle/接收器，显示对端
  * 键盘名没有意义。文本里的 \n 是 LVGL label 的换行符。 */
-#define YADS2_NAME_TEXT "Prospector\nReceiver"
+#define YADS2_NAME_TEXT "Prospector\nReceiver RS"
 
 /* NerdFont 修饰键行，在层滚筒下方 */
 #define YADS2_MOD_Y 160
