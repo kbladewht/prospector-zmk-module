@@ -15,6 +15,7 @@
 
 #include <zmk/hid.h>
 #include <zmk/keymap.h>
+#include "screen_font_montserrat.h"
 
 LOG_MODULE_REGISTER(zephyr_status_screen, CONFIG_LOG_DEFAULT_LEVEL);
 
@@ -62,72 +63,8 @@ static const uint8_t text_rows[42][7] = {
     {0, 0, 0, 0, 0, 0, 31}, {0, 0, 0, 0, 0, 0, 0},
 };
 
-static const uint8_t large_text_rows[42][9] = {
-    {30, 33, 35, 37, 41, 49, 33, 33, 30}, {12, 28, 12, 12, 12, 12, 12, 12, 30},
-    {30, 33, 1, 1, 2, 4, 8, 16, 63}, {30, 33, 1, 1, 14, 1, 1, 33, 30},
-    {2, 6, 10, 18, 34, 63, 2, 2, 2}, {63, 32, 32, 32, 62, 1, 1, 33, 30},
-    {14, 16, 32, 32, 62, 33, 33, 33, 30}, {63, 1, 2, 4, 8, 8, 16, 16, 16},
-    {30, 33, 33, 33, 30, 33, 33, 33, 30}, {30, 33, 33, 33, 31, 1, 1, 2, 28},
-    {12, 30, 51, 51, 63, 51, 51, 51, 51}, {62, 51, 51, 62, 51, 51, 51, 51, 62},
-    {15, 24, 48, 48, 48, 48, 48, 24, 15}, {60, 54, 51, 51, 51, 51, 51, 54, 60},
-    {63, 48, 48, 48, 62, 48, 48, 48, 63}, {63, 48, 48, 48, 62, 48, 48, 48, 48},
-    {15, 24, 48, 48, 55, 51, 51, 27, 15}, {51, 51, 51, 51, 63, 51, 51, 51, 51},
-    {30, 12, 12, 12, 12, 12, 12, 12, 30}, {7, 3, 3, 3, 3, 3, 35, 35, 30},
-    {51, 54, 60, 56, 60, 54, 51, 51, 51}, {48, 48, 48, 48, 48, 48, 48, 48, 63},
-    {33, 51, 63, 63, 45, 33, 33, 33, 33}, {33, 49, 57, 61, 55, 51, 49, 33, 33},
-    {30, 33, 51, 51, 51, 51, 51, 33, 30}, {62, 51, 51, 51, 62, 48, 48, 48, 48},
-    {30, 33, 51, 51, 51, 55, 54, 33, 31}, {62, 51, 51, 51, 62, 60, 54, 51, 51},
-    {15, 24, 48, 48, 30, 3, 3, 6, 60}, {63, 12, 12, 12, 12, 12, 12, 12, 12},
-    {51, 51, 51, 51, 51, 51, 51, 51, 30}, {51, 51, 51, 51, 51, 51, 51, 30, 12},
-    {33, 33, 33, 45, 45, 63, 51, 51, 33}, {51, 51, 30, 12, 12, 30, 51, 51, 51},
-    {51, 51, 51, 30, 12, 12, 12, 12, 12}, {63, 3, 6, 12, 12, 24, 48, 48, 63},
-    {0, 0, 0, 0, 30, 0, 0, 0, 0}, {0, 12, 12, 0, 0, 12, 12, 0, 0},
-    {0, 0, 0, 0, 0, 0, 12, 12, 24}, {33, 3, 6, 12, 24, 48, 33, 0, 0},
-    {0, 0, 0, 0, 0, 0, 0, 0, 63}, {0, 0, 0, 0, 0, 0, 0, 0, 0},
-};
-
-static const uint8_t layer_text_rows[36][12] = {
-    {60, 102, 102, 102, 110, 118, 102, 102, 102, 102, 102, 60},
-    {24, 56, 24, 24, 24, 24, 24, 24, 24, 24, 24, 126},
-    {60, 102, 6, 6, 12, 24, 48, 96, 96, 102, 102, 126},
-    {124, 102, 6, 6, 28, 6, 6, 6, 6, 102, 102, 60},
-    {12, 28, 44, 76, 76, 126, 12, 12, 12, 12, 12, 12},
-    {126, 96, 96, 96, 124, 102, 6, 6, 6, 102, 102, 60},
-    {28, 48, 96, 96, 124, 102, 102, 102, 102, 102, 102, 60},
-    {126, 102, 6, 12, 12, 24, 24, 48, 48, 48, 48, 48},
-    {60, 102, 102, 102, 60, 102, 102, 102, 102, 102, 102, 60},
-    {60, 102, 102, 102, 102, 102, 62, 6, 6, 12, 24, 56},
-    {24, 60, 102, 102, 102, 126, 102, 102, 102, 102, 102, 102},
-    {124, 102, 102, 102, 124, 102, 102, 102, 102, 102, 102, 124},
-    {60, 102, 96, 96, 96, 96, 96, 96, 96, 102, 102, 60},
-    {120, 108, 102, 102, 102, 102, 102, 102, 102, 102, 108, 120},
-    {126, 96, 96, 96, 124, 96, 96, 96, 96, 96, 96, 126},
-    {126, 96, 96, 96, 124, 96, 96, 96, 96, 96, 96, 96},
-    {60, 102, 96, 96, 96, 110, 102, 102, 102, 102, 102, 60},
-    {102, 102, 102, 102, 102, 126, 102, 102, 102, 102, 102, 102},
-    {60, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 60},
-    {30, 12, 12, 12, 12, 12, 12, 12, 108, 108, 108, 56},
-    {102, 108, 120, 112, 120, 108, 102, 102, 102, 102, 102, 102},
-    {96, 96, 96, 96, 96, 96, 96, 96, 96, 96, 96, 126},
-    {99, 119, 127, 107, 99, 99, 99, 99, 99, 99, 99, 99},
-    {99, 99, 115, 123, 111, 103, 99, 99, 99, 99, 99, 99},
-    {60, 102, 102, 102, 102, 102, 102, 102, 102, 102, 102, 60},
-    {124, 102, 102, 102, 102, 124, 96, 96, 96, 96, 96, 96},
-    {60, 102, 102, 102, 102, 102, 102, 102, 110, 108, 60, 14},
-    {124, 102, 102, 102, 102, 124, 108, 102, 102, 102, 102, 102},
-    {60, 102, 96, 96, 60, 6, 6, 6, 6, 102, 102, 60},
-    {126, 90, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24},
-    {102, 102, 102, 102, 102, 102, 102, 102, 102, 102, 102, 60},
-    {102, 102, 102, 102, 102, 102, 102, 102, 60, 60, 24, 24},
-    {99, 99, 99, 99, 99, 99, 107, 107, 127, 119, 99, 99},
-    {102, 102, 102, 60, 24, 24, 60, 102, 102, 102, 102, 102},
-    {102, 102, 102, 102, 60, 24, 24, 24, 24, 24, 24, 24},
-    {126, 6, 6, 12, 12, 24, 24, 48, 48, 96, 96, 126},
-};
-
 static const char text_chars[] = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ-:.%_ ";
 static const uint8_t blank_glyph[7] = {0};
-static const uint8_t blank_large_glyph[9] = {0};
 
 struct screen_state {
     char previous_layer[16];
@@ -182,18 +119,6 @@ static const uint8_t *glyph_for(char c) {
     return blank_glyph;
 }
 
-static const uint8_t *large_glyph_for(char c) {
-    if (c >= 'a' && c <= 'z') {
-        c = (char)(c - 'a' + 'A');
-    }
-    for (size_t i = 0; i < sizeof(text_chars) - 1; i++) {
-        if (text_chars[i] == c) {
-            return large_text_rows[i];
-        }
-    }
-    return blank_large_glyph;
-}
-
 static void draw_pixel(int x, int y, uint16_t color) {
     if (x < 0 || x >= screen_width || y < strip_y || y >= strip_y + strip_rows || y >= screen_height) {
         return;
@@ -235,63 +160,66 @@ static void draw_text_centered(const char *text, int y, int scale, uint16_t colo
     draw_text(text, MAX(0, ((int)screen_width - text_width) / 2), y, scale, color);
 }
 
-static const uint8_t *layer_glyph_for(char c) {
+static const struct screen_font_glyph *montserrat_glyph_for(char c,
+                                                            const struct screen_font_glyph *glyphs) {
     if (c >= 'a' && c <= 'z') {
         c = (char)(c - 'a' + 'A');
     }
-    if (c >= '0' && c <= '9') {
-        return layer_text_rows[c - '0'];
+    if (c < ' ' || c > '_') {
+        c = '?';
     }
-    if (c >= 'A' && c <= 'Z') {
-        return layer_text_rows[10 + c - 'A'];
-    }
-    return NULL;
+    return &glyphs[(uint8_t)c - ' '];
 }
 
-static void draw_layer_text(const char *text, int x, int y, uint16_t color) {
-    while (*text != '\0') {
-        const uint8_t *glyph = layer_glyph_for(*text);
-        if (glyph != NULL) {
-            for (int out_y = 0; out_y < 18; out_y++) {
-                const int src_y0 = (out_y * 2) / 3;
-                const int src_y1 = (out_y * 2 + 1) / 3;
-                for (int out_x = 0; out_x < 12; out_x++) {
-                    const int src_x0 = (out_x * 2) / 3;
-                    const int src_x1 = (out_x * 2 + 1) / 3;
-                    uint8_t coverage = 0;
+static uint8_t montserrat_alpha(const uint8_t *bitmap, const struct screen_font_glyph *glyph,
+                                int x, int y) {
+    const size_t index = (size_t)y * glyph->width + x;
+    const uint8_t packed = bitmap[glyph->bitmap_offset + index / 2];
+    const uint8_t value = (index & 1) ? packed & 0x0F : packed >> 4;
+    return value * 17;
+}
 
-                    coverage += !!(glyph[src_y0] & (1U << (7 - src_x0)));
-                    coverage += !!(glyph[src_y0] & (1U << (7 - src_x1)));
-                    coverage += !!(glyph[src_y1] & (1U << (7 - src_x0)));
-                    coverage += !!(glyph[src_y1] & (1U << (7 - src_x1)));
-                    if (coverage != 0) {
-                        uint8_t alpha = (uint8_t)(coverage * 255 / 4);
-                        uint8_t red = ((color >> 11) & 0x1F) * alpha / 255;
-                        uint8_t green = ((color >> 5) & 0x3F) * alpha / 255;
-                        uint8_t blue = (color & 0x1F) * alpha / 255;
-                        uint16_t antialiased = (red << 11) | (green << 5) | blue;
-                        draw_pixel(x + out_x, y + out_y, antialiased);
-                    }
-                }
-            }
-        } else {
-            const uint8_t *fallback = large_glyph_for(*text);
-            for (int row = 0; row < 9; row++) {
-                for (int col = 0; col < 6; col++) {
-                    if (fallback[row] & (1U << (5 - col))) {
-                        draw_rect(x + col * 2, y + row * 2, 2, 2, color);
-                    }
+static uint16_t blend_text_color(uint16_t color, uint8_t alpha) {
+    const uint16_t red = (((color >> 11) & 0x1F) * alpha + 127) / 255;
+    const uint16_t green = (((color >> 5) & 0x3F) * alpha + 127) / 255;
+    const uint16_t blue = ((color & 0x1F) * alpha + 127) / 255;
+    return (red << 11) | (green << 5) | blue;
+}
+
+static int montserrat_text_width(const char *text, const struct screen_font_glyph *glyphs) {
+    int width = 0;
+    while (*text != '\0') {
+        width += montserrat_glyph_for(*text++, glyphs)->advance;
+    }
+    return width;
+}
+
+static void draw_montserrat_text(const char *text, int x, int y, bool large, uint16_t color) {
+    const struct screen_font_glyph *glyphs = large ? screen_font28_glyphs : screen_font20_glyphs;
+    const uint8_t *bitmap = large ? screen_font28_bitmap : screen_font20_bitmap;
+    const int line_height = large ? 27 : 22;
+    const int baseline = large ? 5 : 4;
+
+    while (*text != '\0') {
+        const struct screen_font_glyph *glyph = montserrat_glyph_for(*text++, glyphs);
+        const int glyph_x = x + glyph->offset_x;
+        const int glyph_y = y + line_height - baseline - glyph->height - glyph->offset_y;
+        for (int row = 0; row < glyph->height; row++) {
+            for (int col = 0; col < glyph->width; col++) {
+                uint8_t alpha = montserrat_alpha(bitmap, glyph, col, row);
+                if (alpha != 0) {
+                    draw_pixel(glyph_x + col, glyph_y + row, blend_text_color(color, alpha));
                 }
             }
         }
-        x += 14;
-        text++;
+        x += glyph->advance;
     }
 }
 
-static void draw_layer_text_centered(const char *text, int y, uint16_t color) {
-    const int text_width = (int)strlen(text) * 14 - 2;
-    draw_layer_text(text, MAX(0, ((int)screen_width - text_width) / 2), y, color);
+static void draw_montserrat_centered(const char *text, int y, bool large, uint16_t color) {
+    const struct screen_font_glyph *glyphs = large ? screen_font28_glyphs : screen_font20_glyphs;
+    const int text_width = montserrat_text_width(text, glyphs);
+    draw_montserrat_text(text, MAX(0, ((int)screen_width - text_width) / 2), y, large, color);
 }
 
 static uint16_t battery_color(uint8_t level) {
@@ -340,15 +268,15 @@ static void draw_state(const struct screen_state *state) {
               state->right_battery > 0 ? COLOR_GREEN : COLOR_RED);
     draw_text("BLE 2", screen_width - 5 * 6 - 20, 28, 1, COLOR_WHITE);
 
-    draw_layer_text_centered("PROSPECTOR", 6, COLOR_NAME);
-    draw_layer_text_centered("RECEIVER RS", 30, COLOR_NAME);
+    draw_montserrat_centered("PROSPECTOR", 6, false, COLOR_NAME);
+    draw_montserrat_centered("RECEIVER RS", 30, false, COLOR_NAME);
 
     if (state->has_previous_layer) {
-        draw_layer_text_centered(state->previous_layer, 55, COLOR_DIM);
+        draw_montserrat_centered(state->previous_layer, 55, true, COLOR_DIM);
     }
-    draw_layer_text_centered(state->layer_name, 90, COLOR_WHITE);
+    draw_montserrat_centered(state->layer_name, 90, true, COLOR_WHITE);
     if (state->has_next_layer) {
-        draw_layer_text_centered(state->next_layer, 125, COLOR_DIM);
+        draw_montserrat_centered(state->next_layer, 125, true, COLOR_DIM);
     }
 
     size_t mod_count = 0;
