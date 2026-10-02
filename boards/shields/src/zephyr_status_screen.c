@@ -15,15 +15,6 @@
 
 #include <zmk/hid.h>
 #include <zmk/keymap.h>
-#if IS_ENABLED(CONFIG_ZMK_BLE)
-#include <zmk/ble.h>
-#endif
-#if IS_ENABLED(CONFIG_ZMK_USB)
-#include <zmk/usb.h>
-#endif
-#if IS_ENABLED(CONFIG_ZMK_WPM)
-#include <zmk/wpm.h>
-#endif
 
 LOG_MODULE_REGISTER(zephyr_status_screen, CONFIG_LOG_DEFAULT_LEVEL);
 
@@ -31,11 +22,14 @@ LOG_MODULE_REGISTER(zephyr_status_screen, CONFIG_LOG_DEFAULT_LEVEL);
 #define STRIP_HEIGHT 8
 #define COLOR_BLACK 0x0000
 #define COLOR_WHITE 0xFFFF
-#define COLOR_CYAN 0x07FF
+#define COLOR_NAME 0x4E7E
 #define COLOR_GREEN 0x07E0
 #define COLOR_RED 0xF800
 #define COLOR_AMBER 0xFD20
-#define COLOR_DIM 0x4208
+#define COLOR_DIM 0x7B72
+#define COLOR_TRACK_GREEN 0x02E4
+#define COLOR_TRACK_AMBER 0x4B01
+#define COLOR_TRACK_RED 0x4802
 
 static const struct device *const display = DEVICE_DT_GET(DT_CHOSEN(zephyr_display));
 static uint16_t pixels[SCREEN_MAX_WIDTH * STRIP_HEIGHT];
@@ -72,17 +66,17 @@ static const char text_chars[] = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ-:.%_ ";
 static const uint8_t blank_glyph[7] = {0};
 
 struct screen_state {
-    char keyboard[32];
+    char previous_layer[16];
     char layer_name[16];
+    char next_layer[16];
     uint8_t layer;
     uint8_t left_battery;
     uint8_t right_battery;
     uint8_t modifiers;
-    uint8_t wpm;
     int8_t rssi;
     bool rssi_valid;
-    bool usb_connected;
-    bool ble_connected;
+    bool has_previous_layer;
+    bool has_next_layer;
 };
 
 static struct screen_state last_state;
@@ -169,76 +163,85 @@ static uint16_t battery_color(uint8_t level) {
     if (level > 50) {
         return COLOR_GREEN;
     }
-    if (level > 15) {
+    if (level > 10) {
         return COLOR_AMBER;
     }
     return COLOR_RED;
 }
 
-static void draw_battery(const char *label, uint8_t level, int y) {
-    char value[8];
-    const int bar_x = 100;
-    const int bar_width = screen_width - bar_x - 12;
+static void draw_battery(const char *label, uint8_t level, int x, int y, int width) {
+    char value[12];
+    uint16_t track_color = COLOR_TRACK_RED;
 
-    draw_text(label, 12, y, 2, COLOR_WHITE);
     if (level == 0) {
-        snprintf(value, sizeof(value), "--");
+        snprintf(value, sizeof(value), "%s --", label);
     } else {
         if (level > 100) {
             level = 100;
         }
-        snprintf(value, sizeof(value), "%u%%", level);
+        snprintf(value, sizeof(value), "%s %u%%", label, level);
+        if (level > 50) {
+            track_color = COLOR_TRACK_GREEN;
+        } else if (level > 10) {
+            track_color = COLOR_TRACK_AMBER;
+        }
     }
-    draw_text(value, 42, y, 2, level == 0 ? COLOR_DIM : battery_color(level));
-    draw_rect(bar_x, y + 4, bar_width, 6, COLOR_DIM);
+    draw_text(value, x, y, 2, level == 0 ? COLOR_RED : battery_color(level));
+    draw_rect(x, y + 18, width, 8, track_color);
     if (level > 0) {
-        draw_rect(bar_x, y + 4, bar_width * level / 100, 6, battery_color(level));
+        draw_rect(x, y + 18, width * level / 100, 8, battery_color(level));
     }
 }
 
 static void draw_state(const struct screen_state *state) {
-    char layer[16];
-    char wpm[8];
-    char status[16];
+    char modifiers[5];
     char signal[16];
-    int scale = 2;
 
-    draw_text_centered(state->keyboard, 12, scale, COLOR_CYAN);
+    const char *left_peer = state->left_battery > 0 ? "L OK" : "L NO";
+    const char *right_peer = state->right_battery > 0 ? "R OK" : "R NO";
+    draw_text(left_peer, 20, 6, 1, state->left_battery > 0 ? COLOR_GREEN : COLOR_RED);
+    draw_text("BLE 1", 20, 28, 1, COLOR_WHITE);
+    draw_text(right_peer, screen_width - (int)strlen(right_peer) * 6 - 20, 6, 1,
+              state->right_battery > 0 ? COLOR_GREEN : COLOR_RED);
+    draw_text("BLE 2", screen_width - 5 * 6 - 20, 28, 1, COLOR_WHITE);
 
-    snprintf(status, sizeof(status), "USB %s", state->usb_connected ? "OK" : "NO");
-    draw_text(status, 12, 38, 1, state->usb_connected ? COLOR_GREEN : COLOR_DIM);
-    snprintf(status, sizeof(status), "BLE %s", state->ble_connected ? "OK" : "NO");
-    draw_text(status, screen_width / 2 + 12, 38, 1,
-              state->ble_connected ? COLOR_GREEN : COLOR_DIM);
-    draw_rect(12, 55, screen_width - 24, 1, COLOR_DIM);
+    draw_text_centered("PROSPECTOR", 6, 2, COLOR_NAME);
+    draw_text_centered("RECEIVER RS", 29, 2, COLOR_NAME);
 
-    draw_text("LAYER", 12, 67, 1, COLOR_DIM);
-    if (state->layer_name[0] != '\0') {
-        snprintf(layer, sizeof(layer), "%s", state->layer_name);
-    } else {
-        snprintf(layer, sizeof(layer), "L%u", state->layer);
+    if (state->has_previous_layer) {
+        draw_text_centered(state->previous_layer, 55, 2, COLOR_DIM);
     }
-    draw_text_centered(layer, 84, 3, COLOR_AMBER);
+    draw_text_centered(state->layer_name, 90, 2, COLOR_WHITE);
+    if (state->has_next_layer) {
+        draw_text_centered(state->next_layer, 125, 2, COLOR_DIM);
+    }
 
-    draw_rect(12, 120, screen_width - 24, 1, COLOR_DIM);
-    draw_battery("L", state->left_battery, 137);
-    draw_battery("R", state->right_battery, 170);
+    size_t mod_count = 0;
+    if (state->modifiers & 0x11) modifiers[mod_count++] = 'C';
+    if (state->modifiers & 0x22) modifiers[mod_count++] = 'S';
+    if (state->modifiers & 0x44) modifiers[mod_count++] = 'A';
+    if (state->modifiers & 0x88) modifiers[mod_count++] = 'G';
+    modifiers[mod_count] = '\0';
+    draw_text_centered(modifiers, 160, 3, COLOR_WHITE);
 
-    draw_rect(12, 199, screen_width - 24, 1, COLOR_DIM);
-    draw_text("MOD", 12, 211, 1, COLOR_DIM);
-    draw_text("C", 52, 207, 2, state->modifiers & 0x11 ? COLOR_CYAN : COLOR_DIM);
-    draw_text("S", 78, 207, 2, state->modifiers & 0x22 ? COLOR_CYAN : COLOR_DIM);
-    draw_text("A", 104, 207, 2, state->modifiers & 0x44 ? COLOR_CYAN : COLOR_DIM);
-    draw_text("G", 130, 207, 2, state->modifiers & 0x88 ? COLOR_CYAN : COLOR_DIM);
-
-    snprintf(wpm, sizeof(wpm), "WPM %u", state->wpm);
-    draw_text(wpm, 12, 229, 1, COLOR_WHITE);
     if (state->rssi_valid) {
-        snprintf(signal, sizeof(signal), "RSSI%dDBM", state->rssi);
+        snprintf(signal, sizeof(signal), "%dDBM", state->rssi);
     } else {
-        snprintf(signal, sizeof(signal), "RSSI--");
+        snprintf(signal, sizeof(signal), "--DBM");
     }
-    draw_text(signal, screen_width - (int)strlen(signal) * 6 - 12, 229, 1, COLOR_DIM);
+    uint16_t signal_color = COLOR_RED;
+    if (state->rssi_valid && state->rssi >= -60) {
+        signal_color = COLOR_GREEN;
+    } else if (state->rssi_valid && state->rssi >= -75) {
+        signal_color = COLOR_AMBER;
+    } else if (!state->rssi_valid) {
+        signal_color = COLOR_DIM;
+    }
+    draw_text(signal, screen_width - (int)strlen(signal) * 12 - 8, 176, 2, signal_color);
+
+    const int battery_width = (screen_width - 36) / 2;
+    draw_battery("L", state->left_battery, 12, 202, battery_width);
+    draw_battery("R", state->right_battery, 24 + battery_width, 202, battery_width);
 }
 
 static int render_frame(const struct screen_state *state) {
@@ -268,16 +271,33 @@ static int render_frame(const struct screen_state *state) {
     return 0;
 }
 
+static void read_layer_name(uint8_t index, char *out, size_t out_len) {
+    const char *name = zmk_keymap_layer_name(zmk_keymap_layer_index_to_id(index));
+    if (name != NULL && name[0] != '\0') {
+        snprintf(out, out_len, "%s", name);
+    } else {
+        snprintf(out, out_len, "%u", index);
+    }
+}
+
 static void read_state(struct screen_state *state) {
     memset(state, 0, sizeof(*state));
-    snprintf(state->keyboard, sizeof(state->keyboard), "%s", CONFIG_ZMK_KEYBOARD_NAME);
-
     state->layer = qmk_display_active_layer != NULL
                        ? qmk_display_active_layer()
                        : (uint8_t)zmk_keymap_highest_layer_active();
-    const char *layer_name = zmk_keymap_layer_name(zmk_keymap_layer_index_to_id(state->layer));
-    if (layer_name != NULL) {
-        snprintf(state->layer_name, sizeof(state->layer_name), "%s", layer_name);
+    const uint8_t layer_count = ZMK_KEYMAP_LAYERS_LEN;
+    if (state->layer >= layer_count) {
+        state->layer = 0;
+    }
+    read_layer_name(state->layer, state->layer_name, sizeof(state->layer_name));
+    state->has_previous_layer = state->layer > 0;
+    state->has_next_layer = state->layer + 1 < layer_count;
+    if (state->has_previous_layer) {
+        read_layer_name(state->layer - 1, state->previous_layer,
+                        sizeof(state->previous_layer));
+    }
+    if (state->has_next_layer) {
+        read_layer_name(state->layer + 1, state->next_layer, sizeof(state->next_layer));
     }
 
     struct zmk_hid_keyboard_report *report = zmk_hid_get_keyboard_report();
@@ -286,16 +306,6 @@ static void read_state(struct screen_state *state) {
     state->right_battery = right_battery;
     state->rssi = link_rssi;
     state->rssi_valid = link_rssi_valid;
-#if IS_ENABLED(CONFIG_ZMK_BLE)
-    state->ble_connected = zmk_ble_active_profile_is_connected();
-#endif
-#if IS_ENABLED(CONFIG_ZMK_USB)
-    state->usb_connected = zmk_usb_is_hid_ready();
-#endif
-#if IS_ENABLED(CONFIG_ZMK_WPM)
-    int wpm = zmk_wpm_get_state();
-    state->wpm = (wpm > 0 && wpm <= UINT8_MAX) ? (uint8_t)wpm : 0;
-#endif
 }
 
 static void refresh_screen(struct k_work *work);
