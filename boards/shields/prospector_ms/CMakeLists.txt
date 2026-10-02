@@ -63,23 +63,6 @@ set(PROSPECTOR_SHIELD_SRC ${CMAKE_CURRENT_SOURCE_DIR}/../src)
     target_sources_ifdef(CONFIG_ZMK_DISPLAY_STATUS_SCREEN_CUSTOM app PRIVATE
         ${PROSPECTOR_SHIELD_SRC}/fonts_carrefinho/DINish_Condensed_Semibold_20.c
         ${PROSPECTOR_SHIELD_SRC}/fonts_carrefinho/DINish_Condensed_Semibold_22.c
-        ${PROSPECTOR_SHIELD_SRC}/fonts_carrefinho/DINish_Expanded_Light_36.c
-        ${PROSPECTOR_SHIELD_SRC}/fonts_carrefinho/DINish_Medium_24.c
-        ${PROSPECTOR_SHIELD_SRC}/fonts_carrefinho/FG_Medium_20.c
-        ${PROSPECTOR_SHIELD_SRC}/fonts_carrefinho/FG_Medium_21.c
-        ${PROSPECTOR_SHIELD_SRC}/fonts_carrefinho/FG_Medium_24.c
-        ${PROSPECTOR_SHIELD_SRC}/fonts_carrefinho/FG_Medium_26.c
-        ${PROSPECTOR_SHIELD_SRC}/fonts_carrefinho/FR_Medium_32.c
-        ${PROSPECTOR_SHIELD_SRC}/fonts_carrefinho/FR_Regular_30.c
-        ${PROSPECTOR_SHIELD_SRC}/fonts_carrefinho/FR_Regular_36.c
-        # ${PROSPECTOR_SHIELD_SRC}/fonts_carrefinho/FR_Regular_48.c
-        # ${PROSPECTOR_SHIELD_SRC}/fonts_carrefinho/FR_Thin_48.c
-        # ${PROSPECTOR_SHIELD_SRC}/fonts_carrefinho/PPF_NarrowThin_64.c
-        ${PROSPECTOR_SHIELD_SRC}/fonts_carrefinho/Symbols_Bold_26.c
-        ${PROSPECTOR_SHIELD_SRC}/fonts_carrefinho/Symbols_Medium_28.c
-        ${PROSPECTOR_SHIELD_SRC}/fonts_carrefinho/Symbols_Regular_28.c
-        ${PROSPECTOR_SHIELD_SRC}/fonts_carrefinho/Symbols_Semibold_28.c
-        ${PROSPECTOR_SHIELD_SRC}/fonts_carrefinho/Symbols_Semibold_32.c
     )
 
     # 日志采集层：qf_display_log.c 注册一个额外的日志后端 + 环形行缓冲，
