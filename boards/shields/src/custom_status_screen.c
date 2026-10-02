@@ -479,8 +479,7 @@ static void pending_update_timer_cb(lv_timer_t *timer) {
     /* 直接读全局量并在本函数内更新显示（避免任何带 float 参数的调用）
      * 注意：ble_is_signal_pending() 读取一次就清零，所以"取走"必须由当前真正
      * 在显示的那套皮肤来做，免得新值被另一套皮肤先吃掉、界面一直不更新。 */
-    if (current_screen == SCREEN_PROSPECTOR_DISPLAY &&
-        prospector_layouts_get_style() == PROSPECTOR_LAYOUT_YADS2) {
+    if (current_screen == SCREEN_PROSPECTOR_DISPLAY) {
         /* yads2 布局的主刷新是数据驱动的（不按键就没有数据事件），RSSI 由这个
          * 100ms 定时器兜底；内部没有新值时会立刻返回，不会白重绘。 */
         yads2_layout_refresh_rssi();
@@ -747,15 +746,8 @@ lv_obj_t *zmk_display_status_screen(void) {
         /* Create Prospector Display with configured layout */
         create_prospector_display_widgets();
 
-        /* Override NVS-saved layout with Kconfig default on first boot */
-        prospector_layout_t kconfig_layout = (prospector_layout_t)CONFIG_PROSPECTOR_DEFAULT_LAYOUT;
-        if (prospector_layouts_get_style() != kconfig_layout) {
-            prospector_layouts_set_style(kconfig_layout);
-        }
-
         current_screen = SCREEN_PROSPECTOR_DISPLAY;
-        LOG_INF("Default layout: %s (from Kconfig)",
-                prospector_layouts_get_name(kconfig_layout));
+        LOG_INF("Default display: YADS2 (from Kconfig)");
     }
 #else
     current_screen = SCREEN_MAIN;
@@ -1849,16 +1841,8 @@ static void create_prospector_display_widgets(void) {
     /* Initialize layout system on the screen object */
     prospector_layouts_init(screen_obj);
 
-    /* Restore saved layout style from NVS */
-    uint8_t saved_layout = display_settings_get_layout();
-    if (saved_layout != (uint8_t)prospector_layouts_get_style()) {
-        prospector_layouts_set_style((prospector_layout_t)saved_layout);
-    }
-
     prospector_display_active = true;
-
-    LOG_INF("Prospector Display created (%s)",
-            prospector_layouts_get_name(prospector_layouts_get_style()));
+    LOG_INF("Prospector Display created");
 }
 
 

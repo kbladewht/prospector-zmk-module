@@ -55,9 +55,4 @@ void display_settings_set_layer_slide_mode(bool enabled);
 uint8_t display_settings_get_channel(void);
 void display_settings_set_channel(uint8_t channel);
 
-/* ========== Layout Style ========== */
-
-uint8_t display_settings_get_layout(void);
-void display_settings_set_layout(uint8_t layout);
-
 #endif /* DISPLAY_SETTINGS_H */

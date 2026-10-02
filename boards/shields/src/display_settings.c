@@ -11,7 +11,6 @@
  *   "prosp/brightness"  - auto_brightness (bool) + manual_brightness (uint8_t)
  *   "prosp/layers"      - max_layers (uint8_t) + slide_mode (bool)
  *   "prosp/channel"     - scanner channel (uint8_t)
- *   "prosp/layout"      - layout style (uint8_t)
  *   "prosp/batviz"      - scanner battery visibility (bool)
  */
 
@@ -62,8 +61,6 @@ static uint8_t scanner_channel =
     0;
 #endif
 
-static uint8_t layout_style = 2; /* PROSPECTOR_LAYOUT_OPERATOR = 2 */
-
 static bool settings_loaded = false;
 
 /* ========== Settings Load Handler ========== */
@@ -113,18 +110,6 @@ static int display_settings_handle_set(const char *name, size_t len,
         return rc;
     }
 
-    if (settings_name_steq(name, "layout", &next) && !next) {
-        if (len != sizeof(layout_style)) {
-            return -EINVAL;
-        }
-        rc = read_cb(cb_arg, &layout_style, sizeof(layout_style));
-        if (rc >= 0) {
-            LOG_INF("Loaded layout: %d", layout_style);
-            return 0;
-        }
-        return rc;
-    }
-
     return -ENOENT;
 }
 
@@ -139,7 +124,6 @@ static void do_save(void) {
     settings_save_one("prosp/brightness", &brightness, sizeof(brightness));
     settings_save_one("prosp/layers", &layers, sizeof(layers));
     settings_save_one("prosp/channel", &scanner_channel, sizeof(scanner_channel));
-    settings_save_one("prosp/layout", &layout_style, sizeof(layout_style));
     dirty = false;
     LOG_INF("Display settings saved to NVS");
 }
@@ -172,10 +156,10 @@ void display_settings_init(void) {
 #endif
 
     settings_loaded = true;
-    LOG_INF("Display settings initialized: bright=%d/%d%%, layers=%d/%s, ch=%d, layout=%d",
+     LOG_INF("Display settings initialized: bright=%d/%d%%, layers=%d/%s, ch=%d",
             brightness.auto_enabled, brightness.manual_level,
             layers.max_layers, layers.slide_mode ? "slide" : "list",
-            scanner_channel, layout_style);
+            scanner_channel);
 }
 
 void display_settings_save_if_dirty(void) {
@@ -253,16 +237,3 @@ void display_settings_set_channel(uint8_t channel) {
     mark_dirty();
 }
 
-/* ========== Layout Getters/Setters ========== */
-
-uint8_t display_settings_get_layout(void) {
-    return layout_style;
-}
-
-void display_settings_set_layout(uint8_t layout) {
-    if (layout_style == layout) {
-        return;
-    }
-    layout_style = layout;
-    mark_dirty();
-}
