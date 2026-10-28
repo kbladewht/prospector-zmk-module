@@ -149,7 +149,6 @@ LV_FONT_DECLARE(lv_font_montserrat_12);
 LV_FONT_DECLARE(lv_font_montserrat_16);
 LV_FONT_DECLARE(lv_font_montserrat_28);
 LV_FONT_DECLARE(lv_font_unscii_8);
-LV_FONT_DECLARE(lv_font_unscii_16);
 
 /* NerdFont modifier symbols - From YADS project (MIT License) */
 static const char *mod_symbols[4] = {
@@ -675,7 +674,7 @@ lv_obj_t *zmk_display_status_screen(void) {
     /* ===== 1. Device Name (TOP_MID, y=25) ===== */
     LOG_INF("[INIT] Creating device name...");
     device_name_label = lv_label_create(screen);
-    lv_obj_set_style_text_font(device_name_label, &lv_font_unscii_16, 0);
+    lv_obj_set_style_text_font(device_name_label, &lv_font_montserrat_16, 0);
     lv_obj_set_style_text_color(device_name_label, lv_color_white(), 0);
     lv_label_set_text(device_name_label, "Scanning...");
     lv_obj_align(device_name_label, LV_ALIGN_TOP_MID, 0, 25);
@@ -1893,7 +1892,7 @@ static void create_main_screen_widgets(void) {
 
     /* Recreate all main screen widgets using screen_obj */
     device_name_label = lv_label_create(screen_obj);
-    lv_obj_set_style_text_font(device_name_label, &lv_font_unscii_16, 0);
+    lv_obj_set_style_text_font(device_name_label, &lv_font_montserrat_16, 0);
     lv_obj_set_style_text_color(device_name_label, lv_color_white(), 0);
     lv_label_set_text(device_name_label, "Scanning...");
     lv_obj_align(device_name_label, LV_ALIGN_TOP_MID, 0, 25);
