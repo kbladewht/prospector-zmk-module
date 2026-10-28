@@ -1,18 +1,72 @@
+# Prospector Scanner CMakeLists.txt
+# Step-by-step restoration from display_test
 
-  zephyr_library()
-  file(GLOB font_sources src/fonts/*.c)
-  zephyr_library_sources(${ZEPHYR_BASE}/misc/empty_file.c)
-  zephyr_library_include_directories(${ZEPHYR_LVGL_MODULE_DIR})
-  zephyr_library_include_directories(${ZEPHYR_BASE}/lib/gui/lvgl/)
-  zephyr_library_include_directories(${ZEPHYR_BASE}/drivers)
-  zephyr_library_include_directories(${CMAKE_SOURCE_DIR}/include)
-  zephyr_library_include_directories(${ZEPHYR_CURRENT_MODULE_DIR}/include)
-  zephyr_library_include_directories(${ZEPHYR_CURRENT_CMAKE_DIR}/include)
-  zephyr_library_include_directories(include)
-  zephyr_library_sources(src/brightness.c)
-  zephyr_library_sources(src/custom_status_screen.c)
-  zephyr_library_sources(src/display_rotate_init.c)
-  zephyr_library_sources(src/widgets/layer_roller.c)
-  zephyr_library_sources(src/widgets/battery_bar.c)
-  zephyr_library_sources_ifdef(CONFIG_DT_HAS_ZMK_BEHAVIOR_CAPS_WORD_ENABLED src/widgets/caps_word_indicator.c)
-  zephyr_library_sources(${font_sources})
+    # Backlight initialization (always needed)
+    target_sources(app PRIVATE src/backlight_init.c)
+
+    # Crash recovery: turn fatal errors into a logged reboot instead of a
+    # silent halt that looks like a display freeze
+    target_sources(app PRIVATE src/fault_recovery.c)
+
+    # CUSTOM screen support (from display_test)
+    target_sources_ifdef(CONFIG_ZMK_DISPLAY_STATUS_SCREEN_CUSTOM app PRIVATE src/custom_status_screen.c)
+    target_sources_ifdef(CONFIG_ZMK_DISPLAY_STATUS_SCREEN_CUSTOM app PRIVATE src/hello_widget.c)
+
+    # Swipe gesture event (ZMK event system - thread-safe)
+    target_sources_ifdef(CONFIG_ZMK_DISPLAY_STATUS_SCREEN_CUSTOM app PRIVATE src/events/swipe_gesture_event.c)
+
+    # Touch handler (when touch is enabled)
+    target_sources_ifdef(CONFIG_PROSPECTOR_TOUCH_ENABLED app PRIVATE src/touch_handler.c)
+
+    # Keyboard state tracking lives in the module (src/scanner_core.c) so that
+    # every scanner shield shares it - nothing shield-local to add here.
+
+    # Display settings persistence (NVS)
+    target_sources_ifdef(CONFIG_ZMK_DISPLAY_STATUS_SCREEN_CUSTOM app PRIVATE src/display_settings.c)
+
+    # Brightness control with APDS9960 sensor for auto brightness
+    target_sources_ifdef(CONFIG_ZMK_DISPLAY_STATUS_SCREEN_CUSTOM app PRIVATE src/brightness_control.c)
+
+    # System settings widget (Bootloader, Reset, Channel selector)
+    target_sources_ifdef(CONFIG_ZMK_DISPLAY_STATUS_SCREEN_CUSTOM app PRIVATE src/system_settings_widget.c)
+
+    # NerdFont for modifier icons
+    target_sources_ifdef(CONFIG_ZMK_DISPLAY_STATUS_SCREEN_CUSTOM app PRIVATE src/fonts/NerdFonts_Regular_40.c)
+
+    # Prospector Display layouts (Carrefinho-inspired)
+    target_sources_ifdef(CONFIG_ZMK_DISPLAY_STATUS_SCREEN_CUSTOM app PRIVATE src/prospector_layouts.c)
+    target_sources_ifdef(CONFIG_ZMK_DISPLAY_STATUS_SCREEN_CUSTOM app PRIVATE src/field_layout.c)
+    target_sources_ifdef(CONFIG_ZMK_DISPLAY_STATUS_SCREEN_CUSTOM app PRIVATE src/operator_layout.c)
+    target_sources_ifdef(CONFIG_ZMK_DISPLAY_STATUS_SCREEN_CUSTOM app PRIVATE src/radii_layout.c)
+
+    # Carrefinho custom fonts
+    target_sources_ifdef(CONFIG_ZMK_DISPLAY_STATUS_SCREEN_CUSTOM app PRIVATE
+        src/fonts_carrefinho/DINish_Condensed_Semibold_20.c
+        src/fonts_carrefinho/DINish_Condensed_Semibold_22.c
+        src/fonts_carrefinho/DINish_Expanded_Light_36.c
+        src/fonts_carrefinho/DINish_Medium_24.c
+        src/fonts_carrefinho/FG_Medium_20.c
+        src/fonts_carrefinho/FG_Medium_21.c
+        src/fonts_carrefinho/FG_Medium_24.c
+        src/fonts_carrefinho/FG_Medium_26.c
+        src/fonts_carrefinho/FR_Medium_32.c
+        src/fonts_carrefinho/FR_Regular_30.c
+        src/fonts_carrefinho/FR_Regular_36.c
+        src/fonts_carrefinho/FR_Regular_48.c
+        src/fonts_carrefinho/FR_Thin_48.c
+        src/fonts_carrefinho/PPF_NarrowThin_64.c
+        src/fonts_carrefinho/Symbols_Bold_26.c
+        src/fonts_carrefinho/Symbols_Medium_28.c
+        src/fonts_carrefinho/Symbols_Regular_28.c
+        src/fonts_carrefinho/Symbols_Semibold_28.c
+        src/fonts_carrefinho/Symbols_Semibold_32.c
+    )
+
+    # Include path for local headers
+    target_include_directories(app PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
+
+# ORIGINAL FULL BUILD - TO BE RESTORED INCREMENTALLY
+# if(CONFIG_SHIELD_PROSPECTOR_SCANNER)
+#   zephyr_library()
+#   ... (original code preserved in comments)
+# endif()

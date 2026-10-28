@@ -1,67 +1,57 @@
-if SHIELD_PROSPECTOR_ADAPTER
+# Prospector Scanner - Using display_test Kconfig.defconfig for debugging
 
-config ZMK_SPLIT_BLE_CENTRAL_BATTERY_LEVEL_FETCHING
-    default y
+if SHIELD_PROSPECTOR_SCANNER
+
+config ZMK_KEYBOARD_NAME
+    default "Prospector"
 
 config ZMK_DISPLAY
-   default y
+    default y
 
-choice ZMK_DISPLAY_STATUS_SCREEN
-    default ZMK_DISPLAY_STATUS_SCREEN_CUSTOM
-endchoice
+config PROSPECTOR_SCANNER_TASK_WATCHDOG
+    bool "Software watchdog that reboots the scanner if the display or core thread stops"
+    default y
+    select TASK_WDT
+    help
+      Arms a pure-software task watchdog (no hardware WDT, so firmware
+      updates via the UF2 bootloader are unaffected). If the LVGL display
+      thread or the scanner core's processing work stops running for 10s
+      the device records the hang and reboots instead of sitting frozen.
+      The record is reported in the boot log ("Recovered from crash").
 
-config ZMK_DISPLAY_STATUS_SCREEN_CUSTOM
-    select LV_USE_LABEL
-    select LV_USE_BAR
-    select LV_USE_FLEX
-    select LV_USE_ROLLER
-    select LV_COLOR_SCREEN_TRANSP
+# MIPI DBI for ST7789V (bool required for Zephyr 3.5.0 compatibility)
+config MIPI_DBI
+    bool
+    default y
 
-choice ZMK_DISPLAY_WORK_QUEUE
-    default ZMK_DISPLAY_WORK_QUEUE_DEDICATED
-endchoice
+config SPI
+    default y
 
-config ZMK_DISPLAY_DEDICATED_THREAD_STACK_SIZE
-    default 4096
-
+# ST7789V pixel format
 choice ST7789V_PIXEL_FORMAT
-	default ST7789V_RGB565
+    default ST7789V_RGB565
 endchoice
 
+# LVGL basic settings
 config LV_Z_VDB_SIZE
     default 100
-
-config LV_Z_MEM_POOL_SIZE
-    default 10000
 
 config LV_DPI_DEF
     default 261
 
 config LV_Z_BITS_PER_PIXEL
-	default 16
+    default 16
 
 choice LV_COLOR_DEPTH
-	default LV_COLOR_DEPTH_16
+    default LV_COLOR_DEPTH_16
 endchoice
 
 config LV_COLOR_16_SWAP
-	default y
+    default y
 
-config LV_DEF_REFR_PERIOD
-    default 20
-
-choice LV_FONT_DEFAULT
-    default LV_FONT_DEFAULT_MONTSERRAT_20
+# Step 3: Use CUSTOM screen (like display_test)
+choice ZMK_DISPLAY_STATUS_SCREEN
+    default ZMK_DISPLAY_STATUS_SCREEN_CUSTOM
 endchoice
-
-config PWM
-    default y
-
-config LED
-    default y
-
-config PROSPECTOR_USE_AMBIENT_LIGHT_SENSOR
-    select SENSOR
-    select APDS9960
 
 endif
