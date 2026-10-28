@@ -18,6 +18,9 @@ This is a [ZMK module](https://zmk.dev/docs/features/modules) that provides cust
 - [Known Issues](#known-issues)
 - [To-Do](#to-do)
 
+> [!IMPORTANT]
+> This branch targets ZMK v0.3 and older (Zephyr 3.5). For ZMK main (Zephyr 4.1), see the [`feat/new-status-screens` branch](https://github.com/carrefinho/prospector-zmk-module/tree/feat/new-status-screens) (Zephyr 4.1 compatible, including new status screens, work-in-progress). Build with board `xiao_ble//zmk` instead of `seeeduino_xiao_ble`.
+
 ## Features
 
 - Four status screen layouts to choose from
@@ -43,7 +46,7 @@ manifest:
   projects:
     - name: zmk
       remote: zmkfirmware
-      revision: main
+      revision: v0.3                              # <--- v0.3 only
       import: app/west.yml
     - name: prospector-zmk-module                 # <--- and these
       remote: carrefinho                          # <---
