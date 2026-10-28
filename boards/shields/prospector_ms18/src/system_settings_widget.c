@@ -166,7 +166,7 @@ static lv_obj_t *create_styled_button(lv_obj_t *parent, const char *text,
                                        lv_color_t bg_color, lv_color_t bg_color_pressed,
                                        int x_offset, int y_offset) {
     // Create button using lv_btn (proper LVGL v7 button widget)
-    lv_obj_t *btn = lv_btn_create(parent);
+    lv_obj_t *btn = lv_button_create(parent);
     if (!btn) {
         LOG_ERR("Failed to create button");
         return NULL;
@@ -309,7 +309,7 @@ int zmk_widget_system_settings_init(struct zmk_widget_system_settings *widget, l
     update_channel_value_display(widget);  // Set initial value
 
     // Left arrow button (decrease channel)
-    widget->channel_left_btn = lv_btn_create(widget->obj);
+    widget->channel_left_btn = lv_button_create(widget->obj);
     lv_obj_set_size(widget->channel_left_btn, 40, 32);
     lv_obj_align(widget->channel_left_btn, LV_ALIGN_BOTTOM_MID, -25, -45);
     lv_obj_set_style_bg_color(widget->channel_left_btn, lv_color_hex(0x333333), LV_STATE_DEFAULT);
@@ -324,7 +324,7 @@ int zmk_widget_system_settings_init(struct zmk_widget_system_settings *widget, l
     lv_obj_add_event_cb(widget->channel_left_btn, channel_left_btn_event_cb, LV_EVENT_ALL, widget);
 
     // Right arrow button (increase channel)
-    widget->channel_right_btn = lv_btn_create(widget->obj);
+    widget->channel_right_btn = lv_button_create(widget->obj);
     lv_obj_set_size(widget->channel_right_btn, 40, 32);
     lv_obj_align(widget->channel_right_btn, LV_ALIGN_BOTTOM_MID, 55, -45);
     lv_obj_set_style_bg_color(widget->channel_right_btn, lv_color_hex(0x333333), LV_STATE_DEFAULT);

@@ -2724,7 +2724,7 @@ static void create_system_settings_widgets(void) {
     lv_obj_align(ss_kb_version_label, LV_ALIGN_TOP_MID, 0, 65);
 
     /* Bootloader button (blue) - compact for version info space */
-    ss_bootloader_btn = lv_btn_create(screen_obj);
+    ss_bootloader_btn = lv_button_create(screen_obj);
     lv_obj_set_size(ss_bootloader_btn, 200, 50);
     lv_obj_align(ss_bootloader_btn, LV_ALIGN_CENTER, 0, -10);
     lv_obj_set_style_bg_color(ss_bootloader_btn, lv_color_hex(0x4A90E2), LV_STATE_DEFAULT);
@@ -2748,7 +2748,7 @@ static void create_system_settings_widgets(void) {
     lv_obj_center(bl_label);
 
     /* Reset button (red) - compact for version info space */
-    ss_reset_btn = lv_btn_create(screen_obj);
+    ss_reset_btn = lv_button_create(screen_obj);
     lv_obj_set_size(ss_reset_btn, 200, 50);
     lv_obj_align(ss_reset_btn, LV_ALIGN_CENTER, 0, 50);
     lv_obj_set_style_bg_color(ss_reset_btn, lv_color_hex(0xE24A4A), LV_STATE_DEFAULT);
@@ -3073,7 +3073,7 @@ static void ks_show_channel_popup(void) {
     /* Row 0: "All" (2 col width) + "0" (1 col) */
     int all_width = 2 * BADGE_W + BADGE_GAP_X;
 
-    ks_channel_popup_btns[CHANNEL_ALL] = lv_btn_create(ks_channel_popup);
+    ks_channel_popup_btns[CHANNEL_ALL] = lv_button_create(ks_channel_popup);
     lv_obj_set_size(ks_channel_popup_btns[CHANNEL_ALL], all_width, BADGE_H);
     lv_obj_align(ks_channel_popup_btns[CHANNEL_ALL], LV_ALIGN_TOP_LEFT, start_x, BADGE_START_Y);
     lv_obj_set_style_bg_color(ks_channel_popup_btns[CHANNEL_ALL], lv_color_hex(0x4A90E2), LV_STATE_DEFAULT);
@@ -3094,7 +3094,7 @@ static void ks_show_channel_popup(void) {
                        LV_EVENT_CLICKED, (void *)(intptr_t)CHANNEL_ALL);
 
     /* "0" badge on same row as "All" */
-    ks_channel_popup_btns[0] = lv_btn_create(ks_channel_popup);
+    ks_channel_popup_btns[0] = lv_button_create(ks_channel_popup);
     lv_obj_set_size(ks_channel_popup_btns[0], BADGE_W, BADGE_H);
     lv_obj_align(ks_channel_popup_btns[0], LV_ALIGN_TOP_LEFT,
                  start_x + all_width + BADGE_GAP_X, BADGE_START_Y);
@@ -3123,7 +3123,7 @@ static void ks_show_channel_popup(void) {
         int y_offset = BADGE_START_Y + BADGE_H + BADGE_GAP_Y + row * (BADGE_H + BADGE_GAP_Y);
         int x_offset = start_x + col * (BADGE_W + BADGE_GAP_X);
 
-        ks_channel_popup_btns[i] = lv_btn_create(ks_channel_popup);
+        ks_channel_popup_btns[i] = lv_button_create(ks_channel_popup);
         lv_obj_set_size(ks_channel_popup_btns[i], BADGE_W, BADGE_H);
         lv_obj_align(ks_channel_popup_btns[i], LV_ALIGN_TOP_LEFT, x_offset, y_offset);
 
@@ -3351,7 +3351,7 @@ static void create_keyboard_select_widgets(void) {
     lv_obj_add_event_cb(ch_prefix, ks_channel_display_cb, LV_EVENT_CLICKED, NULL);
 
     /* Channel badge - use simple btn for reliable click */
-    ks_channel_container = lv_btn_create(screen_obj);
+    ks_channel_container = lv_button_create(screen_obj);
     lv_obj_set_size(ks_channel_container, 36, 24);
     lv_obj_align(ks_channel_container, LV_ALIGN_TOP_RIGHT, -15, 16);
     lv_obj_set_style_radius(ks_channel_container, 6, 0);
