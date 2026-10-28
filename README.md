@@ -81,3 +81,12 @@ CONFIG_PROSPECTOR_FIXED_BRIGHTNESS=80
 | `CONFIG_PROSPECTOR_FIXED_BRIGHTNESS`               | Set fixed display brightess when not using ambient light sensor           | 50 (1-100)   |
 | `CONFIG_PROSPECTOR_PROSPECTOR_ROTATE_DISPLAY_180` | Rotate the display 180 degrees                                            | n            |
 | `CONFIG_PROSPECTOR_LAYER_ROLLER_ALL_CAPS`         | Convert layer names to all caps                                           | n            |
+
+## Five-theme source module (ms2 / LVGL 9)
+
+[display-themes/](display-themes/README.md) contains FIELD, OPERATOR, RADII,
+YADS and INDUSTRIAL, including the ms2 adapter, optional DYA settings, fonts,
+and native host tests. It is opt-in and is not loaded by this branch's build.
+The ogura-scanner-ms branch currently uses prospector_ms18; its display/state
+interfaces differ from the module's ms2/LVGL 9 baseline. See
+[the integration status](display-themes/UPSTREAM-INTEGRATION.md) before enabling it.
